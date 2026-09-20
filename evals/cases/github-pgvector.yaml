@@ -1,5 +1,6 @@
 name: github-pgvector
 query: "Postgres extension for vector similarity search"
+goal: "The Postgres extension for vector search, its repository, and its index and distance options."
 num: 15
 tags: [github, code, noise]
 expected_domains: [github.com]

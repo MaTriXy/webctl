@@ -39,8 +39,9 @@ const DefaultCoverageThreshold = 0.5
 type Case struct {
 	// Name identifies the case; defaults to the file name without extension.
 	Name string `yaml:"name" json:"name"`
-	// Query is the search to run.
+	// Query is the search to run; Goal, optional, is what the searcher needs.
 	Query string `yaml:"query" json:"query"`
+	Goal  string `yaml:"goal,omitempty" json:"goal,omitempty"`
 	// Provider overrides the runner's provider for this case (optional).
 	Provider string `yaml:"provider,omitempty" json:"provider,omitempty"`
 	// Num is how many results to request (default 10).
@@ -102,6 +103,17 @@ func (c *Case) Validate() error {
 		}
 	}
 	return nil
+}
+
+// ask is what the judges are given for this case.
+func (c *Case) ask() jev.Ask { return jev.Ask{Query: c.Query, Goal: c.Goal} }
+
+// caseAsk applies the runner's NoGoal switch.
+func (r *Runner) caseAsk(c Case) jev.Ask {
+	if r.NoGoal {
+		return jev.Ask{Query: c.Query}
+	}
+	return c.ask()
 }
 
 // threshold returns the relevance cutoff for qualification.
@@ -201,7 +213,7 @@ func Filter(cases []Case, names []string) ([]Case, error) {
 
 // JevClient is the subset of *jev.Client the runner needs.
 type JevClient interface {
-	Qualify(ctx context.Context, query string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
+	Qualify(ctx context.Context, ask jev.Ask, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
 	SystemOne(ctx context.Context, req *jev.SystemOneRequest) (*jev.SystemOneResponse, error)
 }
 
@@ -232,6 +244,8 @@ type Runner struct {
 	Audit bool
 	// ScrapeAll runs the scrape stage on every case, not only those marked.
 	ScrapeAll bool
+	// NoGoal hides each case's goal from the judges, for A/B runs.
+	NoGoal bool
 	// ReuseSearches, when set, supplies each case's raw provider results
 	// (by case name) from an earlier run, so this run judges identical
 	// inputs. Cases not present are searched live.
@@ -427,11 +441,12 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 
 	// One audit of the raw results labels low-value pages; every stage
 	// counts how many of them it delivered.
+	ask := r.caseAsk(c)
 	flagged := map[string]bool{}
 	if r.Audit {
 		var usage jev.Usage
 		var err error
-		if flagged, usage, err = r.audit(ctx, c.Query, results); err != nil {
+		if flagged, usage, err = r.audit(ctx, ask, results); err != nil {
 			rep.AuditError = err.Error()
 		}
 		rep.Usage.Add(usage)
@@ -552,7 +567,7 @@ type coverageTheme struct {
 }
 
 type coverageState struct {
-	Query   string                  `json:"query"`
+	jev.Ask
 	Themes  []coverageTheme         `json:"themes"`
 	Results []provider.SearchResult `json:"results"`
 }
@@ -560,7 +575,7 @@ type coverageState struct {
 // coverage asks Jev, in a single batch request, whether the kept results
 // cover each theme. With no kept results every theme is reported uncovered
 // without calling Jev.
-func (r *Runner) coverage(ctx context.Context, query string, themes []string, results []provider.SearchResult, threshold float64) ([]ThemeResult, jev.Usage, error) {
+func (r *Runner) coverage(ctx context.Context, ask jev.Ask, themes []string, results []provider.SearchResult, threshold float64) ([]ThemeResult, jev.Usage, error) {
 	out := make([]ThemeResult, len(themes))
 	for i, th := range themes {
 		out[i] = ThemeResult{Theme: th, Confidence: 1}
@@ -573,12 +588,12 @@ func (r *Runner) coverage(ctx context.Context, query string, themes []string, re
 	if err != nil {
 		return nil, jev.Usage{}, err
 	}
-	state := coverageState{Query: query, Results: results}
+	state := coverageState{Ask: ask, Results: results}
 	questions := make(map[string]jev.Question, len(themes))
 	for i, th := range themes {
 		id := ThemeKey(i)
 		state.Themes = append(state.Themes, coverageTheme{ID: id, Theme: th})
-		instructions, err := p.Render(prompts.Data{Query: query, Theme: th, ID: id, Index: i})
+		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Theme: th, ID: id, Index: i})
 		if err != nil {
 			return nil, jev.Usage{}, err
 		}

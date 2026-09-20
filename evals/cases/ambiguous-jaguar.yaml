@@ -1,8 +1,9 @@
 # Disambiguation: the rubric plus a tight threshold should drop car results.
 name: ambiguous-jaguar
 query: "jaguar big cat habitat and diet in the Amazon rainforest"
+goal: "Where jaguars live in the Amazon and what they hunt."
 num: 15
-min_score: 6.7
+min_score: 6.5
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
 junk_domains: [laselvajunglelodge.com, amazonexplorer.com]
 expected_themes:

@@ -49,6 +49,7 @@ type Prompt struct {
 // Data is the template context available to prompt bodies.
 type Data struct {
 	Query    string
+	Goal     string // what the user actually needs; optional
 	Title    string
 	URL      string
 	Snippet  string

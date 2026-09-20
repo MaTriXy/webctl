@@ -1,5 +1,6 @@
 name: seo-close-credit-card
 query: "does closing a credit card hurt your credit score"
+goal: "How closing a card affects a credit score through utilization and account age, from credit bureaus or the CFPB."
 num: 20
 tags: [seo, noise, finance]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).

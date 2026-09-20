@@ -1,5 +1,6 @@
 name: tech-dpo-vs-rlhf
 query: "DPO vs RLHF with PPO, when does direct preference optimization fall short"
+goal: "Where direct preference optimization falls short of PPO-based RLHF, from papers or practitioners."
 num: 15
 tags: [research, ml]
 scrape: true

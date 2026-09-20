@@ -50,6 +50,7 @@ type fakeQualifier struct {
 	dupes  map[string]bool    // "urlA|urlB" → confirmed duplicate
 
 	gotQuery string
+	gotGoal  string
 	gotOpts  jev.QualifyOptions
 	calls    int
 
@@ -64,7 +65,7 @@ type fakeQualifier struct {
 }
 
 // dupes maps "urlA|urlB" to whether the fake confirms them as duplicates.
-func (f *fakeQualifier) ConfirmDuplicates(_ context.Context, _ string, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error) {
+func (f *fakeQualifier) ConfirmDuplicates(_ context.Context, _ jev.Ask, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error) {
 	out := make([]bool, len(pairs))
 	for i, p := range pairs {
 		out[i] = f.dupes[results[p.A].URL+"|"+results[p.B].URL] || f.dupes[results[p.B].URL+"|"+results[p.A].URL]
@@ -72,7 +73,7 @@ func (f *fakeQualifier) ConfirmDuplicates(_ context.Context, _ string, results [
 	return out, jev.Usage{InputTokens: 7}, nil
 }
 
-func (f *fakeQualifier) FilterChunks(_ context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error) {
+func (f *fakeQualifier) FilterChunks(_ context.Context, ask jev.Ask, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.chunkCalls++
@@ -95,9 +96,9 @@ func (f *fakeQualifier) FilterChunks(_ context.Context, query string, chunks []s
 	return out, jev.Usage{}, nil
 }
 
-func (f *fakeQualifier) Qualify(_ context.Context, query string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error) {
+func (f *fakeQualifier) Qualify(_ context.Context, ask jev.Ask, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error) {
 	f.calls++
-	f.gotQuery, f.gotOpts = query, opts
+	f.gotQuery, f.gotOpts, f.gotGoal = ask.Query, opts, ask.Goal
 	if f.err != nil {
 		return nil, jev.Usage{}, f.err
 	}
@@ -657,23 +658,23 @@ func TestClipSnippet(t *testing.T) {
 }
 
 func TestSearchChainFallsBackOnFailure(t *testing.T) {
-	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{ExaAPIKey: "e", ParallelAPIKey: "p", SonarAPIKey: "s", JevAPIKey: "j"})
 	h.provs = map[string]*fakeProvider{
-		"exa":   {err: errors.New("exa is down")},
-		"ketch": {err: errors.New("ketch is down")},
-		"ddg":   {results: []provider.SearchResult{paper}},
+		"exa":      {err: errors.New("exa is down")},
+		"parallel": {err: errors.New("parallel is down")},
+		"sonar":    {results: []provider.SearchResult{paper}},
 	}
 	out, errOut, err := h.run("q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(h.built, ",") != "exa,ketch,ddg" {
-		t.Errorf("chain order = %v, want exa,ketch,ddg", h.built)
+	if strings.Join(h.built, ",") != "exa,parallel,sonar" {
+		t.Errorf("chain order = %v, want exa,parallel,sonar", h.built)
 	}
-	if !strings.Contains(errOut, "exa failed (exa is down); trying ketch") || !strings.Contains(errOut, "ketch failed (ketch is down); trying ddg") {
+	if !strings.Contains(errOut, "exa failed (exa is down); trying parallel") || !strings.Contains(errOut, "parallel failed (parallel is down); trying sonar") {
 		t.Errorf("fallback notice missing: %q", errOut)
 	}
-	if !strings.Contains(errOut, "ddg: 1 results → 1 kept") {
+	if !strings.Contains(errOut, "sonar: 1 results → 1 kept") {
 		t.Errorf("summary should name the provider that succeeded: %q", errOut)
 	}
 	if !strings.Contains(out, "Attention Is All You Need") {
@@ -685,10 +686,10 @@ func TestSearchChainAllFail(t *testing.T) {
 	h := newHarness(t, keys.Store{ExaAPIKey: "e", SearXNGURL: "http://sx", JevAPIKey: "j"})
 	h.prov.err = errors.New("boom")
 	_, _, err := h.run("q")
-	if err == nil || !strings.Contains(err.Error(), "all 4 providers failed") || !strings.Contains(err.Error(), "boom") {
+	if err == nil || !strings.Contains(err.Error(), "all 2 providers failed") || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("err = %v", err)
 	}
-	if strings.Join(h.built, ",") != "searxng,exa,ketch,ddg" {
+	if strings.Join(h.built, ",") != "searxng,exa" {
 		t.Errorf("chain order = %v", h.built)
 	}
 }
@@ -733,10 +734,9 @@ func TestSearchConfiguredProviderWithoutKeyErrors(t *testing.T) {
 }
 
 func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
-	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{JevAPIKey: "j"})
 	h.provs = map[string]*fakeProvider{
-		"exa":   {results: []provider.SearchResult{blog, paper}},
-		"ketch": {err: errors.New("quota")},
+		"ketch": {results: []provider.SearchResult{blog, paper}},
 		"ddg":   {results: []provider.SearchResult{paper, wiki}},
 	}
 	out, _, err := h.run("--multi", "--no-filter", "--json", "q")
@@ -746,7 +746,7 @@ func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
 	got := mustJSON[[]rawResult](t, out)
 	// paper appears in both lists (ranks 2 and 1) → top; blog (rank 1) beats wiki (rank 2).
 	wantURLs := []string{paper.URL, blog.URL, wiki.URL}
-	wantEngines := []string{"exa,ddg", "exa", "ddg"}
+	wantEngines := []string{"ketch,ddg", "ketch", "ddg"}
 	if len(got) != 3 {
 		t.Fatalf("got %+v", got)
 	}
@@ -757,36 +757,34 @@ func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
 	}
 
 	// Filtered mode: the summary names every engine and engines survive Jev.
-	h = newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h = newHarness(t, keys.Store{JevAPIKey: "j"})
 	h.provs = map[string]*fakeProvider{
-		"exa":   {results: []provider.SearchResult{blog, paper}},
-		"ketch": {err: errors.New("quota")},
+		"ketch": {results: []provider.SearchResult{blog, paper}},
 		"ddg":   {results: []provider.SearchResult{paper, wiki}},
 	}
 	out, errOut, err := h.run("--multi", "--json", "--verbose", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(errOut, "exa+ddg: 3 results → 2 kept") {
+	if !strings.Contains(errOut, "ketch+ddg: 3 results → 2 kept") {
 		t.Errorf("summary = %q", errOut)
 	}
 	items := mustJSON[[]outputResult](t, out)
-	if len(items) != 3 || items[0].URL != paper.URL || strings.Join(items[0].Engines, ",") != "exa,ddg" {
+	if len(items) != 3 || items[0].URL != paper.URL || strings.Join(items[0].Engines, ",") != "ketch,ddg" {
 		t.Errorf("items = %+v", items)
 	}
 	out, _, err = h.run("--multi", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Engines: exa, ddg") {
+	if !strings.Contains(out, "Engines: ketch, ddg") {
 		t.Errorf("pretty output should list engines:\n%s", out)
 	}
 }
 
 func TestSearchMultiPartialFailureAndCap(t *testing.T) {
-	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{JevAPIKey: "j"})
 	h.provs = map[string]*fakeProvider{
-		"exa":   {err: errors.New("quota")},
 		"ketch": {err: errors.New("quota")},
 		"ddg":   {results: []provider.SearchResult{paper, wiki, blog}},
 	}
@@ -794,7 +792,7 @@ func TestSearchMultiPartialFailureAndCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(errOut, "exa failed: quota") {
+	if !strings.Contains(errOut, "ketch failed: quota") {
 		t.Errorf("stderr = %q", errOut)
 	}
 	if out != paper.URL+"\n"+wiki.URL+"\n" {
@@ -803,7 +801,7 @@ func TestSearchMultiPartialFailureAndCap(t *testing.T) {
 
 	h.provs["ddg"].err = errors.New("blocked")
 	_, _, err = h.run("--multi", "--no-filter", "q")
-	if err == nil || !strings.Contains(err.Error(), "all 3 providers failed") || !strings.Contains(err.Error(), "blocked") {
+	if err == nil || !strings.Contains(err.Error(), "all 2 providers failed") || !strings.Contains(err.Error(), "blocked") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -819,20 +817,19 @@ func TestSearchRandomFallsBack(t *testing.T) {
 	}
 	t.Cleanup(func() { shuffleChain = orig })
 
-	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{JevAPIKey: "j"})
 	h.provs = map[string]*fakeProvider{
 		"ddg":   {err: errors.New("blocked")},
-		"ketch": {err: errors.New("blocked")},
-		"exa":   {results: []provider.SearchResult{paper}},
+		"ketch": {results: []provider.SearchResult{paper}},
 	}
 	_, errOut, err := h.run("--random", "--urls-only", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(h.built, ",") != "ddg,ketch,exa" {
-		t.Errorf("random order = %v, want reversed chain ddg,ketch,exa", h.built)
+	if strings.Join(h.built, ",") != "ddg,ketch" {
+		t.Errorf("random order = %v, want reversed chain ddg,ketch", h.built)
 	}
-	if !strings.Contains(errOut, "ddg failed (blocked); trying ketch") || !strings.Contains(errOut, "ketch failed (blocked); trying exa") {
+	if !strings.Contains(errOut, "ddg failed (blocked); trying ketch") {
 		t.Errorf("stderr = %q", errOut)
 	}
 }
@@ -1248,5 +1245,21 @@ func TestSearchMinResultsBackfills(t *testing.T) {
 		if it.Backfilled || (it.URL == wiki.URL && it.Kept) {
 			t.Errorf("unexpected keep without --min-results: %+v", it)
 		}
+	}
+}
+
+func TestSearchGoalReachesJudges(t *testing.T) {
+	h := newHarness(t, allKeys())
+	_, _, err := h.run("search", "giants score september 19", "--goal", "the final score of last night's Giants game", "--urls-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.qual.gotQuery != "giants score september 19" || h.qual.gotGoal != "the final score of last night's Giants game" {
+		t.Errorf("judges saw query %q goal %q", h.qual.gotQuery, h.qual.gotGoal)
+	}
+	// The bare form still works and carries no goal.
+	_, _, err = h.run("giants score", "--urls-only")
+	if err != nil || h.qual.gotGoal != "" || h.qual.gotQuery != "giants score" {
+		t.Errorf("bare form: %v query %q goal %q", err, h.qual.gotQuery, h.qual.gotGoal)
 	}
 }

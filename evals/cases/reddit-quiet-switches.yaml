@@ -1,6 +1,7 @@
 name: reddit-quiet-switches
 # Community opinion question; Reddit threads are the real answer. Expect SEO "best of" listicles as noise.
 query: "quietest mechanical keyboard switches for an open office, real user experiences"
+goal: "Which specific switches people who work in shared offices actually use and how quiet they found them."
 num: 15
 tags: [reddit, opinion, noise]
 scrape: true

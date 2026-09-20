@@ -1,5 +1,6 @@
 name: tech-jwt-refresh-rotation
 query: "refresh token rotation with JWT, detecting reuse"
+goal: "How to implement refresh token rotation with reuse detection, from docs or reference implementations."
 num: 15
 tags: [engineering, security, noise]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).

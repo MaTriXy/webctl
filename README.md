@@ -3,10 +3,11 @@
 Smart web search CLI for agents, backed by [Jev](https://typesafe.ai). Saves a lot of tokens.
 
 ```bash
-webctl "What was the score of last night's Giants game?"
+webctl search "final score san francisco giants september 19th baseball" \
+  --goal "I'm looking for the score of the specific Giants game from last night, September 19th."
 ```
 
-or, more likely:
+The query goes to the search engines; the goal goes to every Jev judge next to it, so results are scored against what you actually need. `webctl "<query>"` works too, without a goal.
 
 ```bash
 webctl "San Francisco giants MLB score recent games" \
@@ -32,7 +33,7 @@ It's MIT-licensed and free to you.  Feel free to submit a PR if I missed somethi
 
 ```bash
 webctl setup        # asks for your Jev key
-webctl "latest advances in mechanistic interpretability"
+webctl search "mechanistic interpretability 2026" --goal "Recent papers on sparse autoencoders and circuit analysis"
 ```
 
 Searching does not require keys for hobbyist-level usage on several platforms, which webctl intelligently picks from.
@@ -171,8 +172,8 @@ Respect rate limits with automatic cooldowns:
 One pipeline: search providers → dedupe → Jev scores → threshold → optional scrape → print. [docs/search.md](docs/search.md)
 
 ```bash
-webctl "q"
-webctl -n 20 "q"                   # results to request per provider
+webctl search "q" --goal "what you actually need"
+webctl search "q" -n 20            # results to request per provider
 ```
 
 ### Providers
@@ -180,9 +181,9 @@ webctl -n 20 "q"                   # results to request per provider
 Three providers per search, rankings fused by reciprocal rank. Keyed providers first, then keyless endpoints, then DuckDuckGo, then SearXNG. [docs/providers.md](docs/providers.md)
 
 ```bash
-webctl -p exa "q"                  # exactly one provider
-webctl --sources 1 "q"             # first provider that answers
-webctl --multi "q"                 # every available provider
+webctl search "q" -p exa           # exactly one provider
+webctl search "q" --sources 1      # first provider that answers
+webctl search "q" --multi          # every available provider
 ```
 
 ### Filtering
@@ -190,10 +191,11 @@ webctl --multi "q"                 # every available provider
 Jev scores each result 0–10; the default cut is 6 ("useful" or better). [docs/filtering.md](docs/filtering.md)
 
 ```bash
-webctl --min-score 2.5 "q"                          # stricter
-webctl --noul "Is this a peer-reviewed paper?" "q"  # yes/no question instead of a score
-webctl --rubric "off-topic,related,on-point" "q"    # custom scale
-webctl --no-filter "q"                              # skip Jev (works without a key)
+webctl search "q" --min-score 8.5                          # stricter
+webctl search "q" --min-results 5                          # never fewer than 5 (marked backfilled)
+webctl search "q" --noul "Is this a peer-reviewed paper?"  # yes/no question instead of a score
+webctl search "q" --rubric "off-topic,related,on-point"    # custom scale
+webctl search "q" --no-filter                              # skip Jev (works without a key)
 ```
 
 ### Scraping
@@ -201,9 +203,9 @@ webctl --no-filter "q"                              # skip Jev (works without a 
 Fetch page text for each kept result; `--filter-chunks` keeps only the ~2000-char chunks Jev says are relevant. [docs/scraping.md](docs/scraping.md)
 
 ```bash
-webctl --scrape "q"
-webctl --scrape --filter-chunks "q"
-webctl --scrape --max-chars 20000 "q"  # default 50000 per page
+webctl search "q" --scrape
+webctl search "q" --scrape --filter-chunks
+webctl search "q" --scrape --max-chars 20000  # default 50000 per page
 ```
 
 ### Dedupe
@@ -211,7 +213,7 @@ webctl --scrape --max-chars 20000 "q"  # default 50000 per page
 Exact duplicates (same normalized URL or title) collapse before scoring; near-duplicates are proposed by MinHash and confirmed by Jev after. [docs/dedupe.md](docs/dedupe.md)
 
 ```bash
-webctl --no-dedupe "q"             # skip the near-duplicate pass
+webctl search "q" --no-dedupe      # skip the near-duplicate pass
 ```
 
 ### Cooldowns
@@ -226,9 +228,9 @@ webctl cooldown clear exa          # retry now
 ### Output
 
 ```bash
-webctl --json "q" | jq '.[].url'   # JSON array
-webctl --urls-only "q"             # one URL per line
-webctl --verbose "q"               # probabilities and dropped results
+webctl search "q" --json | jq '.[].url'   # JSON array
+webctl search "q" --urls-only             # one URL per line
+webctl search "q" --verbose               # confidence, probabilities, dropped results
 ```
 
 ### Config and keys
@@ -262,7 +264,7 @@ webctl eval report --cases
 
 ## Providers
 
-Chain order: your `searxng` or `degoog` if set, then any provider you set a key for, then `ketch`, then `ddg`. Three are queried per search and fused. Full table with limits and cost: `webctl docs providers`.
+Chain order: your `searxng` or `degoog` if set, then the providers you set a key for. `ketch` and `ddg` are used only when no key is set. Up to three are queried per search and fused. Full table with limits and cost: `webctl docs providers`.
 
 | keyless | keyed |
 |---|---|
@@ -270,7 +272,7 @@ Chain order: your `searxng` or `degoog` if set, then any provider you set a key 
 
 ```bash
 webctl keys set brave        # a key puts the provider in the chain
-webctl -p tavily "query"     # exactly one provider
+webctl search "query" -p tavily     # exactly one provider
 ```
 
 ## License

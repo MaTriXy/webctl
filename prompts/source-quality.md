@@ -18,6 +18,9 @@ community threads with real discussion, and pages with first-hand or
 original content. Judge only this one result.
 
 Query: {{.Query}}
+{{- if .Goal}}
+Goal: {{.Goal}}
+{{- end}}
 
 Result {{.ID}}:
   Title: {{.Title}}

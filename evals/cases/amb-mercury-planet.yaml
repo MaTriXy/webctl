@@ -1,6 +1,7 @@
 name: amb-mercury-planet
 # Astrology and the element will crowd in.
 query: "mercury planet surface temperature and orbit facts"
+goal: "Facts about the planet Mercury: surface temperature and orbit."
 num: 15
 tags: [ambiguous, noise]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).

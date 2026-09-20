@@ -18,31 +18,31 @@ type chunkItem struct {
 }
 
 type chunkState struct {
-	Query  string      `json:"query"`
+	Ask
 	Chunks []chunkItem `json:"chunks"`
 }
 
 // FilterChunks asks Jev, in ONE batch request, whether each chunk of a page
 // is relevant to query. The returned slice is aligned with chunks; entries
 // Jev did not answer are nil.
-func (c *Client) FilterChunks(ctx context.Context, query string, chunks []string) ([]*NoulAnswer, Usage, error) {
+func (c *Client) FilterChunks(ctx context.Context, ask Ask, chunks []string) ([]*NoulAnswer, Usage, error) {
 	out := make([]*NoulAnswer, len(chunks))
 	if len(chunks) == 0 {
 		return out, Usage{}, nil
 	}
-	if query == "" {
+	if ask.Query == "" {
 		return nil, Usage{}, errors.New("jev: query is empty")
 	}
 	p, err := prompts.Load(prompts.ChunkRelevance)
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	state := chunkState{Query: query, Chunks: make([]chunkItem, 0, len(chunks))}
+	state := chunkState{Ask: ask, Chunks: make([]chunkItem, 0, len(chunks))}
 	questions := make(map[string]Question, len(chunks))
 	for i, text := range chunks {
 		id := ChunkKey(i)
 		state.Chunks = append(state.Chunks, chunkItem{ID: id, Text: text})
-		instructions, err := p.Render(prompts.Data{Query: query, Chunk: text, ID: id, Index: i})
+		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Chunk: text, ID: id, Index: i})
 		if err != nil {
 			return nil, Usage{}, err
 		}

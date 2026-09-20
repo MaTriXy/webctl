@@ -1,6 +1,7 @@
 name: reddit-nyc-neighborhood
 # Listicle SEO sites dominate; the useful content is people describing actual tradeoffs.
 query: "moving from San Francisco to NYC in my 30s which neighborhood, honest tradeoffs"
+goal: "Real tradeoffs between named NYC neighborhoods from people who made the SF-to-NYC move."
 num: 15
 tags: [reddit, opinion, noise]
 expected_domains: [reddit.com]

@@ -21,7 +21,7 @@ func TestFilterChunksOneBatchRequest(t *testing.T) {
 		return 200, SystemOneResponse{Answers: answers, Usage: Usage{InputTokens: 300, OutputTokens: 3}}
 	})
 	chunks := []string{"Transformers use attention.", "Subscribe to our newsletter!", "Multi-head attention…"}
-	got, usage, err := js.client().FilterChunks(context.Background(), "how do transformers work", chunks)
+	got, usage, err := js.client().FilterChunks(context.Background(), Ask{Query: "how do transformers work"}, chunks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,13 +58,13 @@ func TestFilterChunksEdgeCases(t *testing.T) {
 	js := newJevServer(t, func(SystemOneRequest) (int, any) { return 500, `boom` })
 	c := js.client()
 	c.NoRetry = true
-	if got, _, err := c.FilterChunks(context.Background(), "q", nil); err != nil || len(got) != 0 || js.calls.Load() != 0 {
+	if got, _, err := c.FilterChunks(context.Background(), Ask{Query: "q"}, nil); err != nil || len(got) != 0 || js.calls.Load() != 0 {
 		t.Errorf("no chunks should short-circuit: %v, %v", got, err)
 	}
-	if _, _, err := c.FilterChunks(context.Background(), "", []string{"x"}); err == nil {
+	if _, _, err := c.FilterChunks(context.Background(), Ask{Query: ""}, []string{"x"}); err == nil {
 		t.Error("empty query should error")
 	}
-	if _, _, err := c.FilterChunks(context.Background(), "q", []string{"x"}); err == nil || !strings.Contains(err.Error(), "chunk filter") {
+	if _, _, err := c.FilterChunks(context.Background(), Ask{Query: "q"}, []string{"x"}); err == nil || !strings.Contains(err.Error(), "chunk filter") {
 		t.Errorf("server error should propagate: %v", err)
 	}
 }

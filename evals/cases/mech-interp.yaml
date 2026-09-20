@@ -1,5 +1,6 @@
 name: mech-interp
 query: "latest advances in mechanistic interpretability 2025"
+goal: "Recent mechanistic interpretability research: sparse autoencoders and circuit analysis."
 num: 20
 min_score: 5.0
 expected_themes:

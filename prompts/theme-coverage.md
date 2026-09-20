@@ -15,5 +15,8 @@ addresses the theme. Answer no if the theme is absent or only mentioned in
 passing. Judge only this one theme.
 
 Query: {{.Query}}
+{{- if .Goal}}
+Goal: {{.Goal}}
+{{- end}}
 
 Theme {{.ID}}: {{.Theme}}

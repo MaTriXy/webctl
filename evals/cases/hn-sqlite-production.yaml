@@ -1,5 +1,6 @@
 name: hn-sqlite-production
 query: "using SQLite as the production database for a web app, tradeoffs and experiences"
+goal: "First-hand accounts of running SQLite as the production database for a web app and the limits they hit."
 num: 15
 tags: [hackernews, engineering]
 scrape: true

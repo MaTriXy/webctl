@@ -9,4 +9,4 @@ webctl keys set searxng --value http://localhost:8899   # or: export SEARXNG_URL
 webctl config set provider searxng                      # optional: try it first
 ```
 
-`docs/searxng/settings.yml` enables the JSON format the client needs and disables SearXNG's own rate limiter for local use. Results are keyword-grade with short snippets, so Jev has less to judge than with Exa's excerpts; `--scrape` closes that gap when it matters. Upstream engines can block an address under heavy load.
+`docs/searxng/settings.yml` enables the JSON format the client needs and disables SearXNG's own rate limiter for local use. Results are keyword-grade with short snippets, so Jev has less to judge than with Exa's excerpts; `--scrape` closes that gap when it matters. SearXNG itself has no quota, but the engines behind it do: after a few hundred queries in a day Google CSE and Brave answer "too many requests" and SearXNG suspends them for a while, returning no results. Treat it as a supplement, not an unlimited source.

@@ -261,7 +261,7 @@ var (
 
 func TestScoreResult(t *testing.T) {
 	js := newJevServer(t, answerAll(scoreAnswer(0.01, 0.02, 0.15, 0.82)))
-	ans, err := js.client().ScoreResult(context.Background(), "transformers", res1, nil)
+	ans, err := js.client().ScoreResult(context.Background(), Ask{Query: "transformers"}, res1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestScoreResult(t *testing.T) {
 func TestScoreResultCustomRubric(t *testing.T) {
 	js := newJevServer(t, answerAll(scoreAnswer(0.5, 0.5)))
 	rubric := []string{"no", "yes"}
-	if _, err := js.client().ScoreResult(context.Background(), "q", res1, rubric); err != nil {
+	if _, err := js.client().ScoreResult(context.Background(), Ask{Query: "q"}, res1, rubric); err != nil {
 		t.Fatal(err)
 	}
 	got := js.lastReq.Questions["relevance"].Criteria
@@ -307,12 +307,12 @@ func TestScoreResultErrors(t *testing.T) {
 	js := newJevServer(t, func(SystemOneRequest) (int, any) {
 		return 200, SystemOneResponse{Answers: map[string]Answer{"other": scoreAnswer(1)}}
 	})
-	if _, err := js.client().ScoreResult(context.Background(), "q", res1, nil); err == nil || !strings.Contains(err.Error(), `missing "relevance"`) {
+	if _, err := js.client().ScoreResult(context.Background(), Ask{Query: "q"}, res1, nil); err == nil || !strings.Contains(err.Error(), `missing "relevance"`) {
 		t.Errorf("err = %v", err)
 	}
 	// Wrong answer type.
 	js = newJevServer(t, answerAll(noulAnswer(0.5)))
-	if _, err := js.client().ScoreResult(context.Background(), "q", res1, nil); err == nil || !strings.Contains(err.Error(), "expected score answer") {
+	if _, err := js.client().ScoreResult(context.Background(), Ask{Query: "q"}, res1, nil); err == nil || !strings.Contains(err.Error(), "expected score answer") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -325,7 +325,7 @@ func TestScoreBatch(t *testing.T) {
 		}}
 		return 200, resp
 	})
-	answers, err := js.client().ScoreBatch(context.Background(), "transformers", []SearchResult{res1, res2}, nil)
+	answers, err := js.client().ScoreBatch(context.Background(), Ask{Query: "transformers"}, []SearchResult{res1, res2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestScoreBatch(t *testing.T) {
 		t.Errorf("answers = %+v", answers)
 	}
 
-	empty, err := js.client().ScoreBatch(context.Background(), "q", nil, nil)
+	empty, err := js.client().ScoreBatch(context.Background(), Ask{Query: "q"}, nil, nil)
 	if err != nil || len(empty) != 0 {
 		t.Errorf("empty batch = %v, %v", empty, err)
 	}
@@ -355,7 +355,7 @@ func TestScoreBatch(t *testing.T) {
 
 func TestNoulResult(t *testing.T) {
 	js := newJevServer(t, answerAll(noulAnswer(0.15)))
-	ans, err := js.client().NoulResult(context.Background(), "q", "Is this a paper?", res2)
+	ans, err := js.client().NoulResult(context.Background(), Ask{Query: "q"}, "Is this a paper?", res2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,21 +369,21 @@ func TestNoulResult(t *testing.T) {
 	if c := ans.Confidence(); c < 0.69 || c > 0.71 {
 		t.Errorf("confidence = %v, want 0.7", c)
 	}
-	if _, err := js.client().NoulResult(context.Background(), "q", "", res1); err == nil {
+	if _, err := js.client().NoulResult(context.Background(), Ask{Query: "q"}, "", res1); err == nil {
 		t.Error("empty question should error")
 	}
 }
 
 func TestNoulBatch(t *testing.T) {
 	js := newJevServer(t, answerAll(noulAnswer(0.9)))
-	answers, err := js.client().NoulBatch(context.Background(), "q", "Relevant?", []SearchResult{res1, res2})
+	answers, err := js.client().NoulBatch(context.Background(), Ask{Query: "q"}, "Relevant?", []SearchResult{res1, res2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(answers) != 2 || !answers[BatchKey(0)].Yes() {
 		t.Errorf("answers = %+v", answers)
 	}
-	if _, err := js.client().NoulBatch(context.Background(), "q", "", []SearchResult{res1}); err == nil {
+	if _, err := js.client().NoulBatch(context.Background(), Ask{Query: "q"}, "", []SearchResult{res1}); err == nil {
 		t.Error("empty question should error")
 	}
 }
@@ -399,7 +399,7 @@ func TestQualifyPerResult(t *testing.T) {
 	})
 	c := js.client()
 	c.NoRetry = true
-	out, usage, err := c.Qualify(context.Background(), "q", []SearchResult{res1, res2}, QualifyOptions{Concurrency: 2})
+	out, usage, err := c.Qualify(context.Background(), Ask{Query: "q"}, []SearchResult{res1, res2}, QualifyOptions{Concurrency: 2})
 	if err != nil {
 		t.Fatalf("partial failure should not error: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestQualifyPerResult(t *testing.T) {
 
 func TestQualifyAllFail(t *testing.T) {
 	js := newJevServer(t, func(SystemOneRequest) (int, any) { return 400, `bad` })
-	_, _, err := js.client().Qualify(context.Background(), "q", []SearchResult{res1, res2}, QualifyOptions{})
+	_, _, err := js.client().Qualify(context.Background(), Ask{Query: "q"}, []SearchResult{res1, res2}, QualifyOptions{})
 	if err == nil || !strings.Contains(err.Error(), "failed for all 2 results") {
 		t.Errorf("err = %v", err)
 	}
@@ -433,7 +433,7 @@ func TestQualifyAllFail(t *testing.T) {
 
 func TestQualifyEmpty(t *testing.T) {
 	js := newJevServer(t, answerAll(scoreAnswer(1)))
-	out, _, err := js.client().Qualify(context.Background(), "q", nil, QualifyOptions{})
+	out, _, err := js.client().Qualify(context.Background(), Ask{Query: "q"}, nil, QualifyOptions{})
 	if err != nil || len(out) != 0 || js.calls.Load() != 0 {
 		t.Errorf("empty qualify: out=%v err=%v calls=%d", out, err, js.calls.Load())
 	}
@@ -441,7 +441,7 @@ func TestQualifyEmpty(t *testing.T) {
 
 func TestQualifyNoul(t *testing.T) {
 	js := newJevServer(t, answerAll(noulAnswer(0.8)))
-	out, _, err := js.client().Qualify(context.Background(), "q", []SearchResult{res1}, QualifyOptions{Noul: "Is it a paper?"})
+	out, _, err := js.client().Qualify(context.Background(), Ask{Query: "q"}, []SearchResult{res1}, QualifyOptions{Noul: "Is it a paper?"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +454,7 @@ func TestQualifyBatchMissingAnswer(t *testing.T) {
 	js := newJevServer(t, func(SystemOneRequest) (int, any) {
 		return 200, SystemOneResponse{Answers: map[string]Answer{BatchKey(0): scoreAnswer(0, 1)}}
 	})
-	out, _, err := js.client().Qualify(context.Background(), "q", []SearchResult{res1, res2}, QualifyOptions{Batch: true})
+	out, _, err := js.client().Qualify(context.Background(), Ask{Query: "q"}, []SearchResult{res1, res2}, QualifyOptions{Batch: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +470,7 @@ func TestQualifyBatchMissingAnswer(t *testing.T) {
 
 	// Noul batch path.
 	js = newJevServer(t, answerAll(noulAnswer(0.3)))
-	out, _, err = js.client().Qualify(context.Background(), "q", []SearchResult{res1, res2}, QualifyOptions{Batch: true, Noul: "Relevant?"})
+	out, _, err = js.client().Qualify(context.Background(), Ask{Query: "q"}, []SearchResult{res1, res2}, QualifyOptions{Batch: true, Noul: "Relevant?"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +481,7 @@ func TestQualifyBatchMissingAnswer(t *testing.T) {
 
 func TestQualifyBatchRequestError(t *testing.T) {
 	js := newJevServer(t, func(SystemOneRequest) (int, any) { return 403, `forbidden` })
-	_, _, err := js.client().Qualify(context.Background(), "q", []SearchResult{res1}, QualifyOptions{Batch: true})
+	_, _, err := js.client().Qualify(context.Background(), Ask{Query: "q"}, []SearchResult{res1}, QualifyOptions{Batch: true})
 	if !IsUnauthorized(err) {
 		t.Errorf("err = %v", err)
 	}

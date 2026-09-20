@@ -60,7 +60,7 @@ func TestCandidatesAndGroups(t *testing.T) {
 
 type yesConfirmer struct{ got []Pair }
 
-func (y *yesConfirmer) ConfirmDuplicates(_ context.Context, _ string, _ []provider.SearchResult, pairs []Pair) ([]bool, error) {
+func (y *yesConfirmer) ConfirmDuplicates(_ context.Context, _, _ string, _ []provider.SearchResult, pairs []Pair) ([]bool, error) {
 	y.got = pairs
 	out := make([]bool, len(pairs))
 	for i := range out {
@@ -75,11 +75,11 @@ func TestRunWithAndWithoutConfirmer(t *testing.T) {
 		{Title: "B", URL: "https://b.example/1", Content: article + " plus a sentence."},
 	}
 	yc := &yesConfirmer{}
-	groups, pairs, err := Run(context.Background(), yc, "q", rs)
+	groups, pairs, err := Run(context.Background(), yc, "q", "", rs)
 	if err != nil || len(groups) != 1 || len(yc.got) != len(pairs) || len(pairs) != 1 {
 		t.Errorf("run = %v %v %v", groups, pairs, err)
 	}
-	groups, _, err = Run(context.Background(), nil, "q", rs)
+	groups, _, err = Run(context.Background(), nil, "q", "", rs)
 	if err != nil || len(groups) != 1 {
 		t.Errorf("without confirmer, a near-identical pair should still group: %v %v", groups, err)
 	}

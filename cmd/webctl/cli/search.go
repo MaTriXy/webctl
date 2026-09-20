@@ -26,6 +26,7 @@ import (
 // searchFlags holds the flag values for the search (root) command.
 type searchFlags struct {
 	provider   string
+	goal       string
 	num        int
 	minScore   float64
 	minResults int
@@ -49,6 +50,7 @@ var sf searchFlags
 
 func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
+	f.StringVarP(&sf.goal, "goal", "g", "", "what you actually need; shown to every judge next to the query")
 	f.StringVarP(&sf.provider, "provider", "p", "", "use exactly one provider: ketch, searxng, ddg, or keyed exa, parallel, sonar, youcom")
 	f.IntVarP(&sf.num, "num", "n", 0, "results to request per provider (default 10)")
 	f.IntVar(&sf.sources, "sources", 0, "providers to query and fuse (default 3)")
@@ -72,9 +74,9 @@ func addSearchFlags(cmd *cobra.Command) {
 // qualifier is the slice of *jev.Client the search pipeline depends on.
 // It exists so tests can substitute a fake without an HTTP server.
 type qualifier interface {
-	Qualify(ctx context.Context, query string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
-	FilterChunks(ctx context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
-	ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error)
+	Qualify(ctx context.Context, ask jev.Ask, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
+	FilterChunks(ctx context.Context, ask jev.Ask, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
+	ConfirmDuplicates(ctx context.Context, ask jev.Ask, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error)
 }
 
 // jevConfirmer adapts a qualifier to dedupe.Confirmer, accumulating usage.
@@ -83,12 +85,12 @@ type jevConfirmer struct {
 	usage jev.Usage
 }
 
-func (j *jevConfirmer) ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []dedupe.Pair) ([]bool, error) {
+func (j *jevConfirmer) ConfirmDuplicates(ctx context.Context, query, goal string, results []provider.SearchResult, pairs []dedupe.Pair) ([]bool, error) {
 	jp := make([]jev.DuplicatePair, len(pairs))
 	for i, p := range pairs {
 		jp[i] = jev.DuplicatePair{A: p.A, B: p.B}
 	}
-	out, usage, err := j.q.ConfirmDuplicates(ctx, query, results, jp)
+	out, usage, err := j.q.ConfirmDuplicates(ctx, jev.Ask{Query: query, Goal: goal}, results, jp)
 	j.usage.Add(usage)
 	return out, err
 }
@@ -97,13 +99,13 @@ func (j *jevConfirmer) ConfirmDuplicates(ctx context.Context, query string, resu
 // content and folds each group into its best-scored member, which keeps
 // the union of engines and lists the others as Duplicates. It returns the
 // survivors in their original order and how many were folded.
-func collapseDuplicates(ctx context.Context, q qualifier, query string, qualified []jev.Qualified, engines map[string][]string) ([]jev.Qualified, int, jev.Usage, error) {
+func collapseDuplicates(ctx context.Context, q qualifier, ask jev.Ask, qualified []jev.Qualified, engines map[string][]string) ([]jev.Qualified, int, jev.Usage, error) {
 	results := make([]provider.SearchResult, len(qualified))
 	for i, item := range qualified {
 		results[i] = item.Result
 	}
 	jc := &jevConfirmer{q: q}
-	groups, _, err := dedupe.Run(ctx, jc, query, results)
+	groups, _, err := dedupe.Run(ctx, jc, ask.Query, ask.Goal, results)
 	if err != nil {
 		return qualified, 0, jc.usage, err
 	}
@@ -181,6 +183,8 @@ const noulDefaultThreshold = 0.5
 // searchOptions is the fully-resolved, validated input to the pipeline.
 type searchOptions struct {
 	Query string
+	// Goal is what the user actually needs; the judges see it next to the query.
+	Goal string
 	// Providers is the ordered chain to try (or, with modeMulti, to fuse).
 	Providers []string
 	Mode      searchMode
@@ -206,6 +210,9 @@ type searchOptions struct {
 	// NoDedupe skips the Jev duplicate pass.
 	NoDedupe bool
 }
+
+// ask is what every Jev judge is given.
+func (o searchOptions) ask() jev.Ask { return jev.Ask{Query: o.Query, Goal: o.Goal} }
 
 type outputFormat int
 
@@ -263,6 +270,7 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 
 	opts := searchOptions{
 		Query:        query,
+		Goal:         strings.TrimSpace(f.goal),
 		Num:          cfg.Num,
 		MinScore:     cfg.MinScore,
 		NoFilter:     f.noFilter,
@@ -407,7 +415,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 	}
 
 	q := newQualifier(cfg, jevKey)
-	qualified, usage, err := q.Qualify(ctx, opts.Query, results, jev.QualifyOptions{
+	qualified, usage, err := q.Qualify(ctx, opts.ask(), results, jev.QualifyOptions{
 		Rubric: opts.Rubric,
 		Noul:   opts.Noul,
 		Batch:  opts.Batch,
@@ -425,7 +433,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		if engines == nil {
 			engines = map[string][]string{}
 		}
-		qualified, folded, dupUsage, dedupeErr = collapseDuplicates(ctx, q, opts.Query, qualified, engines)
+		qualified, folded, dupUsage, dedupeErr = collapseDuplicates(ctx, q, opts.ask(), qualified, engines)
 		usage.Add(dupUsage)
 		if dedupeErr != nil && (opts.Format == formatPretty || opts.Verbose) {
 			fmt.Fprintf(errOut, "duplicate check failed (%v); showing all results\n", dedupeErr)
@@ -518,7 +526,7 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 		go func(pc *pageContent) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			filterChunks(ctx, q, opts.Query, pc)
+			filterChunks(ctx, q, opts.ask(), pc)
 		}(&out[i])
 	}
 	wg.Wait()
@@ -527,11 +535,11 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 
 // filterChunks splits pc.Content, asks Jev about every chunk in one request,
 // and reassembles the ones it says yes to.
-func filterChunks(ctx context.Context, q qualifier, query string, pc *pageContent) {
+func filterChunks(ctx context.Context, q qualifier, ask jev.Ask, pc *pageContent) {
 	chunks := scrape.Split(pc.Content, scrape.DefaultChunkChars)
 	pc.Filtered = true
 	pc.ChunksTotal = len(chunks)
-	answers, _, err := q.FilterChunks(ctx, query, chunks)
+	answers, _, err := q.FilterChunks(ctx, ask, chunks)
 	if err != nil {
 		pc.FilterErr = err
 		pc.ChunksKept = len(chunks)

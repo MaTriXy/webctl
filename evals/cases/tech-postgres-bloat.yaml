@@ -1,5 +1,6 @@
 name: tech-postgres-bloat
 query: "postgres table bloat, autovacuum tuning for high update tables"
+goal: "Concrete autovacuum settings and cleanup options for Postgres tables with heavy update traffic."
 num: 15
 tags: [engineering, databases]
 scrape: true

@@ -1,7 +1,8 @@
 name: attention-paper
 query: "attention is all you need transformer paper"
+goal: "The original 'Attention Is All You Need' paper and its self-attention mechanism."
 num: 10
-min_score: 6.7
+min_score: 6.5
 expected_themes:
   - the original 2017 Transformer paper by Vaswani et al. (arXiv 1706.03762)
   - self-attention or multi-head attention mechanism

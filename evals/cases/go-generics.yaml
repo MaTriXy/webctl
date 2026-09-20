@@ -1,5 +1,6 @@
 name: go-generics
 query: "how do generics work in Go 1.18 type parameters constraints"
+goal: "How Go type parameters and constraints work, from the official docs or tutorial."
 num: 15
 expected_themes:
   - type parameters syntax in function or type declarations

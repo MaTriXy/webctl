@@ -4,4 +4,4 @@
 package version
 
 // Version is the current behavior version.
-const Version = "0.0.021"
+const Version = "0.0.023"

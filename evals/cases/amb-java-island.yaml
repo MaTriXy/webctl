@@ -1,5 +1,6 @@
 name: amb-java-island
 query: "java island volcano hiking travel guide"
+goal: "Practical guidance for hiking volcanoes on the island of Java, Indonesia."
 num: 15
 tags: [ambiguous, noise, travel]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).

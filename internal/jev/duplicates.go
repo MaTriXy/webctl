@@ -25,7 +25,7 @@ type dupPair struct {
 }
 
 type dupState struct {
-	Query   string    `json:"query"`
+	Ask
 	Results []dupItem `json:"results"`
 	Pairs   []dupPair `json:"pairs"`
 }
@@ -37,7 +37,7 @@ type DuplicatePair struct{ A, B int }
 // ConfirmDuplicates asks Jev, in ONE batch request, whether each candidate
 // pair covers the same content. The returned slice is aligned with pairs;
 // entries Jev did not answer are false.
-func (c *Client) ConfirmDuplicates(ctx context.Context, query string, results []SearchResult, pairs []DuplicatePair) ([]bool, Usage, error) {
+func (c *Client) ConfirmDuplicates(ctx context.Context, ask Ask, results []SearchResult, pairs []DuplicatePair) ([]bool, Usage, error) {
 	out := make([]bool, len(pairs))
 	if len(pairs) == 0 {
 		return out, Usage{}, nil
@@ -46,7 +46,7 @@ func (c *Client) ConfirmDuplicates(ctx context.Context, query string, results []
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	state := dupState{Query: query}
+	state := dupState{Ask: ask}
 	used := map[int]bool{}
 	for _, pr := range pairs {
 		used[pr.A], used[pr.B] = true, true
@@ -62,7 +62,7 @@ func (c *Client) ConfirmDuplicates(ctx context.Context, query string, results []
 		a, b := "r"+strconv.Itoa(pr.A), "r"+strconv.Itoa(pr.B)
 		state.Pairs = append(state.Pairs, dupPair{ID: id, A: a, B: b})
 		desc := fmt.Sprintf("%s = %s (%s); %s = %s (%s)", a, results[pr.A].Title, results[pr.A].URL, b, results[pr.B].Title, results[pr.B].URL)
-		instructions, err := p.Render(prompts.Data{Query: query, ID: id, Index: i, Snippet: desc})
+		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, ID: id, Index: i, Snippet: desc})
 		if err != nil {
 			return nil, Usage{}, err
 		}

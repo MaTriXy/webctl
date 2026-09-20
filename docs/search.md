@@ -1,6 +1,15 @@
 # Search
 
-`webctl [flags] "<query>"` runs one pipeline: search providers → fold exact duplicates → Jev scores each result → fold near-duplicates → apply the threshold → optionally scrape and chunk-filter → print.
+Recommended form:
+
+```
+webctl search "final score san francisco giants september 19th baseball" \
+  --goal "The score of the Giants game on the night of September 19th."
+```
+
+The query is what goes to the search engines: phrase it the way a search box wants. The goal is what you actually need: phrase it the way you would tell a colleague. Every Jev judge (relevance scoring, chunk filtering, duplicate confirmation) sees both, as `Query:` and `Goal:` lines, and judges against the goal. A bare `webctl "<query>"` is the same pipeline without a goal.
+
+The pipeline: search providers → fold exact duplicates → Jev scores each result → fold near-duplicates → apply the threshold → optionally scrape and chunk-filter → print.
 
 ## Pipeline
 
@@ -16,6 +25,7 @@
 
 | flag | effect |
 |---|---|
+| `-g, --goal TEXT` | what you actually need; shown to every judge next to the query |
 | `-n, --num N` | results to request from each provider (default 10; setting `num`) |
 | `--sources N` | providers to query and fuse (default 3; setting `sources`); `-p` forces 1 |
 | `-p, --provider NAME` | exactly one provider: exa, parallel, sonar, youcom, ddg, searxng |
@@ -50,9 +60,9 @@ Terminal: one block per kept result with title, host, URL, score out of 10, engi
 ## Examples
 
 ```
-webctl "postgres autovacuum tuning for high-update tables"
-webctl -n 20 -m 2.5 --json "DPO vs RLHF" | jq '.[].url'
-webctl --noul "Is this a peer-reviewed paper?" "sparse autoencoders"
-webctl --scrape --filter-chunks "kubernetes OOMKilled below memory limit"
-webctl --sources 1 -v "why is my Go http server leaking goroutines"
+webctl search "postgres autovacuum tuning high update tables" --goal "Concrete autovacuum settings for a table that takes thousands of updates a minute"
+webctl search "DPO vs RLHF PPO" --goal "Where DPO falls short of PPO-based RLHF" -n 20 -m 8.5 --json | jq '.[].url'
+webctl search "sparse autoencoders interpretability" --noul "Is this a peer-reviewed paper?"
+webctl search "kubernetes OOMKilled below memory limit" --goal "Why a pod is OOMKilled while under its limit, and how to tell" --scrape --filter-chunks
+webctl "why is my Go http server leaking goroutines"     # bare form, no goal
 ```

@@ -290,10 +290,10 @@ func (c *Config) JevKey() (string, error) {
 // Chain returns the providers to try, in order. An explicit choice yields a
 // one-element chain (validated later by ProviderKey). Otherwise the preferred
 // provider from config comes first (an error if it is unusable, since the
-// user asked for it), then searxng when its URL is set, then every keyed
-// provider with a key in Names order, then ketch, then ddg. The keyless
-// Exa, Parallel, and You.com endpoints are not in the default chain: ketch
-// already rotates through them, and keyed use is a deliberate, paid choice.
+// user asked for it), then searxng and degoog when their URLs are set,
+// then every provider with a key in Keyed order. With no key at all the
+// chain is ketch then ddg. Setting a key is a choice of engine, so the
+// free tiers leave the chain as soon as one exists.
 func (c *Config) Chain(explicit string) ([]string, error) {
 	if explicit = provider.Normalize(explicit); explicit != "" {
 		return []string{explicit}, nil
@@ -319,15 +319,21 @@ func (c *Config) Chain(explicit string) ([]string, error) {
 			add(own)
 		}
 	}
-	// Paid providers only when you chose to set a key.
+	// Providers you set a key for. Configuring a key is a choice of
+	// engine, so once any key exists the free tiers stay out of the chain.
+	keyed := 0
 	for _, name := range provider.Keyed() {
 		if c.Keys.Get(keys.Name(name)) != "" {
 			add(name)
+			keyed++
 		}
 	}
-	// ketch runs its own chain of free tiers; DuckDuckGo is the last resort.
-	add("ketch")
-	add("ddg")
+	if keyed == 0 {
+		// Nothing configured: ketch runs its own chain of free tiers, and
+		// DuckDuckGo is the last resort.
+		add("ketch")
+		add("ddg")
+	}
 	return chain, nil
 }
 

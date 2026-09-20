@@ -19,7 +19,13 @@ knows, restated context without new information, and passages about a
 different topic. When in doubt, answer no: the reader can open the page.
 Judge only this one chunk.
 
+The goal, when given, is what the user actually needs; keep a chunk if it
+helps toward the goal.
+
 Query: {{.Query}}
+{{- if .Goal}}
+Goal: {{.Goal}}
+{{- end}}
 
 Chunk {{.ID}}:
 {{.Chunk}}

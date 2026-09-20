@@ -36,7 +36,16 @@ that exact question is a best-available source (3), even if the snippet only
 shows the opening post: the value is in the replies. On other queries, judge
 a thread by how directly it addresses the question.
 
+The query is what was sent to the search engine; the goal, when given, is what
+the user actually needs. Judge whether opening this page would move the user
+toward the goal, not whether the snippet already contains the answer: a
+thread on the exact question, the official docs, or a box score page counts
+even when the excerpt shows only its opening lines.
+
 Query: {{.Query}}
+{{- if .Goal}}
+Goal: {{.Goal}}
+{{- end}}
 
 Result {{.ID}}:
   Title: {{.Title}}

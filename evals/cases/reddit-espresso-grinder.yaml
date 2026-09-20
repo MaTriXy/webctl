@@ -1,5 +1,6 @@
 name: reddit-espresso-grinder
 query: "espresso grinder under $300 that people actually recommend after owning it"
+goal: "A short list of sub-$300 grinders that owners still recommend after months of use, with their reasons."
 num: 15
 tags: [reddit, opinion, noise]
 scrape: true

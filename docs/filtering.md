@@ -1,6 +1,6 @@
 # Filtering
 
-Jev (TypeSafe's System One model) scores every result 0–10. Under the hood the judgment is a four-level rubric; Jev returns a probability for each level, the expected level is scaled to 0–10, and that one number is what you see. So 6.0 means "Jev leans useful", 9.5 means "almost certainly the best available".
+Jev (TypeSafe's System One model) scores every result 0–10 against the query and, when given, the `--goal`. Under the hood the judgment is a four-level rubric; Jev returns a probability for each level, the expected level is scaled to 0–10, and that one number is what you see. So 6.0 means "Jev leans useful", 9.5 means "almost certainly the best available".
 
 ## Rubric
 

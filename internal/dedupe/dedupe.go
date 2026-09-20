@@ -217,7 +217,7 @@ func Candidates(results []provider.SearchResult) []Pair {
 // Confirmer judges whether each candidate pair really is the same content.
 // Answers are aligned with pairs; a nil entry means no judgment.
 type Confirmer interface {
-	ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []Pair) ([]bool, error)
+	ConfirmDuplicates(ctx context.Context, query, goal string, results []provider.SearchResult, pairs []Pair) ([]bool, error)
 }
 
 // Groups unions confirmed pairs into duplicate groups: each entry lists
@@ -258,7 +258,7 @@ func Groups(n int, pairs []Pair, confirmed []bool) [][]int {
 // Run proposes candidates, asks the confirmer about them in one pass, and
 // returns the duplicate groups. With no confirmer, only pairs the sketch
 // is very sure about (estimated Jaccard ≥ 0.7) count.
-func Run(ctx context.Context, c Confirmer, query string, results []provider.SearchResult) ([][]int, []Pair, error) {
+func Run(ctx context.Context, c Confirmer, query, goal string, results []provider.SearchResult) ([][]int, []Pair, error) {
 	pairs := Candidates(results)
 	if len(pairs) == 0 {
 		return nil, nil, nil
@@ -270,7 +270,7 @@ func Run(ctx context.Context, c Confirmer, query string, results []provider.Sear
 		}
 		return Groups(len(results), pairs, confirmed), pairs, nil
 	}
-	answers, err := c.ConfirmDuplicates(ctx, query, results, pairs)
+	answers, err := c.ConfirmDuplicates(ctx, query, goal, results, pairs)
 	if err != nil {
 		return nil, pairs, err
 	}

@@ -1,5 +1,6 @@
 name: hn-tailscale-wireguard
 query: "Tailscale vs plain WireGuard, when is the extra layer worth it"
+goal: "Practitioner reasoning on when Tailscale is worth it over raw WireGuard."
 num: 15
 tags: [hackernews, engineering]
 scrape: true

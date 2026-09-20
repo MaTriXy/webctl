@@ -25,9 +25,16 @@ const DefaultConcurrency = 8
 // BatchKey returns the question key used for the i-th result in a batch request.
 func BatchKey(i int) string { return "result_" + strconv.Itoa(i) }
 
+// Ask is what the judges are given: the query sent to the search engines
+// and, optionally, the goal behind it. Both reach every prompt and state.
+type Ask struct {
+	Query string `json:"query"`
+	Goal  string `json:"goal,omitempty"`
+}
+
 // resultState is the structured JSON sent as Jev state for a single result.
 type resultState struct {
-	Query  string       `json:"query"`
+	Ask
 	Result SearchResult `json:"result"`
 }
 
@@ -37,18 +44,18 @@ type batchItem struct {
 }
 
 type batchState struct {
-	Query   string      `json:"query"`
+	Ask
 	Results []batchItem `json:"results"`
 }
 
 // ScoreResult sends a single search result to Jev for relevance scoring.
 // A nil or empty rubric uses the default 0–3 scale.
-func (c *Client) ScoreResult(ctx context.Context, query string, result SearchResult, rubric []string) (*ScoreAnswer, error) {
-	ans, _, err := c.scoreResult(ctx, query, result, rubric)
+func (c *Client) ScoreResult(ctx context.Context, ask Ask, result SearchResult, rubric []string) (*ScoreAnswer, error) {
+	ans, _, err := c.scoreResult(ctx, ask, result, rubric)
 	return ans, err
 }
 
-func (c *Client) scoreResult(ctx context.Context, query string, result SearchResult, rubric []string) (*ScoreAnswer, Usage, error) {
+func (c *Client) scoreResult(ctx context.Context, ask Ask, result SearchResult, rubric []string) (*ScoreAnswer, Usage, error) {
 	p, err := prompts.Load(prompts.RelevanceScore)
 	if err != nil {
 		return nil, Usage{}, err
@@ -56,12 +63,12 @@ func (c *Client) scoreResult(ctx context.Context, query string, result SearchRes
 	if len(rubric) == 0 {
 		rubric = p.Criteria
 	}
-	instructions, err := p.Render(prompts.Data{Query: query, Title: result.Title, URL: result.URL, Snippet: result.Snippet})
+	instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Title: result.Title, URL: result.URL, Snippet: result.Snippet})
 	if err != nil {
 		return nil, Usage{}, err
 	}
 	resp, err := c.SystemOne(ctx, &SystemOneRequest{
-		State:     resultState{Query: query, Result: result},
+		State:     resultState{Ask: ask, Result: result},
 		Questions: map[string]Question{"relevance": ScoreQuestion(instructions, rubric)},
 	})
 	if err != nil {
@@ -80,12 +87,12 @@ func (c *Client) scoreResult(ctx context.Context, query string, result SearchRes
 
 // ScoreBatch sends multiple results in one request. The returned map is keyed
 // by BatchKey(i). Results that Jev did not answer are absent from the map.
-func (c *Client) ScoreBatch(ctx context.Context, query string, results []SearchResult, rubric []string) (map[string]*ScoreAnswer, error) {
-	out, _, err := c.scoreBatch(ctx, query, results, rubric)
+func (c *Client) ScoreBatch(ctx context.Context, ask Ask, results []SearchResult, rubric []string) (map[string]*ScoreAnswer, error) {
+	out, _, err := c.scoreBatch(ctx, ask, results, rubric)
 	return out, err
 }
 
-func (c *Client) scoreBatch(ctx context.Context, query string, results []SearchResult, rubric []string) (map[string]*ScoreAnswer, Usage, error) {
+func (c *Client) scoreBatch(ctx context.Context, ask Ask, results []SearchResult, rubric []string) (map[string]*ScoreAnswer, Usage, error) {
 	if len(results) == 0 {
 		return map[string]*ScoreAnswer{}, Usage{}, nil
 	}
@@ -96,12 +103,12 @@ func (c *Client) scoreBatch(ctx context.Context, query string, results []SearchR
 	if len(rubric) == 0 {
 		rubric = p.Criteria
 	}
-	state := batchState{Query: query, Results: make([]batchItem, 0, len(results))}
+	state := batchState{Ask: ask, Results: make([]batchItem, 0, len(results))}
 	questions := make(map[string]Question, len(results))
 	for i, r := range results {
 		id := BatchKey(i)
 		state.Results = append(state.Results, batchItem{ID: id, SearchResult: r})
-		instructions, err := p.Render(prompts.Data{Query: query, Title: r.Title, URL: r.URL, Snippet: r.Snippet, ID: id, Index: i})
+		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Title: r.Title, URL: r.URL, Snippet: r.Snippet, ID: id, Index: i})
 		if err != nil {
 			return nil, Usage{}, err
 		}
@@ -121,12 +128,12 @@ func (c *Client) scoreBatch(ctx context.Context, query string, results []SearchR
 }
 
 // NoulResult asks a yes/no question about a single result.
-func (c *Client) NoulResult(ctx context.Context, query, question string, result SearchResult) (*NoulAnswer, error) {
-	ans, _, err := c.noulResult(ctx, query, question, result)
+func (c *Client) NoulResult(ctx context.Context, ask Ask, question string, result SearchResult) (*NoulAnswer, error) {
+	ans, _, err := c.noulResult(ctx, ask, question, result)
 	return ans, err
 }
 
-func (c *Client) noulResult(ctx context.Context, query, question string, result SearchResult) (*NoulAnswer, Usage, error) {
+func (c *Client) noulResult(ctx context.Context, ask Ask, question string, result SearchResult) (*NoulAnswer, Usage, error) {
 	if question == "" {
 		return nil, Usage{}, errors.New("jev: noul question is empty")
 	}
@@ -134,12 +141,12 @@ func (c *Client) noulResult(ctx context.Context, query, question string, result 
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	instructions, err := p.Render(prompts.Data{Query: query, Question: question, Title: result.Title, URL: result.URL, Snippet: result.Snippet})
+	instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Question: question, Title: result.Title, URL: result.URL, Snippet: result.Snippet})
 	if err != nil {
 		return nil, Usage{}, err
 	}
 	resp, err := c.SystemOne(ctx, &SystemOneRequest{
-		State:     resultState{Query: query, Result: result},
+		State:     resultState{Ask: ask, Result: result},
 		Questions: map[string]Question{"answer": NoulQuestion(instructions)},
 	})
 	if err != nil {
@@ -158,12 +165,12 @@ func (c *Client) noulResult(ctx context.Context, query, question string, result 
 
 // NoulBatch asks the same yes/no question about every result in one request.
 // The returned map is keyed by BatchKey(i).
-func (c *Client) NoulBatch(ctx context.Context, query, question string, results []SearchResult) (map[string]*NoulAnswer, error) {
-	out, _, err := c.noulBatch(ctx, query, question, results)
+func (c *Client) NoulBatch(ctx context.Context, ask Ask, question string, results []SearchResult) (map[string]*NoulAnswer, error) {
+	out, _, err := c.noulBatch(ctx, ask, question, results)
 	return out, err
 }
 
-func (c *Client) noulBatch(ctx context.Context, query, question string, results []SearchResult) (map[string]*NoulAnswer, Usage, error) {
+func (c *Client) noulBatch(ctx context.Context, ask Ask, question string, results []SearchResult) (map[string]*NoulAnswer, Usage, error) {
 	if question == "" {
 		return nil, Usage{}, errors.New("jev: noul question is empty")
 	}
@@ -174,12 +181,12 @@ func (c *Client) noulBatch(ctx context.Context, query, question string, results 
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	state := batchState{Query: query, Results: make([]batchItem, 0, len(results))}
+	state := batchState{Ask: ask, Results: make([]batchItem, 0, len(results))}
 	questions := make(map[string]Question, len(results))
 	for i, r := range results {
 		id := BatchKey(i)
 		state.Results = append(state.Results, batchItem{ID: id, SearchResult: r})
-		instructions, err := p.Render(prompts.Data{Query: query, Question: question, Title: r.Title, URL: r.URL, Snippet: r.Snippet, ID: id, Index: i})
+		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Question: question, Title: r.Title, URL: r.URL, Snippet: r.Snippet, ID: id, Index: i})
 		if err != nil {
 			return nil, Usage{}, err
 		}
@@ -295,7 +302,7 @@ func (q Qualified) Confidence() float64 {
 // aligned with results (same order, same length). Per-result failures are
 // recorded in Qualified.Err rather than aborting the whole run; the returned
 // error is non-nil only if every result failed or a batch request failed.
-func (c *Client) Qualify(ctx context.Context, query string, results []SearchResult, opts QualifyOptions) ([]Qualified, Usage, error) {
+func (c *Client) Qualify(ctx context.Context, ask Ask, results []SearchResult, opts QualifyOptions) ([]Qualified, Usage, error) {
 	out := make([]Qualified, len(results))
 	for i, r := range results {
 		out[i].Result = r
@@ -305,7 +312,7 @@ func (c *Client) Qualify(ctx context.Context, query string, results []SearchResu
 	}
 
 	if opts.Batch {
-		return c.qualifyBatch(ctx, query, out, opts)
+		return c.qualifyBatch(ctx, ask, out, opts)
 	}
 
 	conc := opts.Concurrency
@@ -333,9 +340,9 @@ func (c *Client) Qualify(ctx context.Context, query string, results []SearchResu
 			var u Usage
 			var err error
 			if opts.Noul != "" {
-				out[i].Noul, u, err = c.noulResult(ctx, query, opts.Noul, out[i].Result)
+				out[i].Noul, u, err = c.noulResult(ctx, ask, opts.Noul, out[i].Result)
 			} else {
-				out[i].Score, u, err = c.scoreResult(ctx, query, out[i].Result, opts.Rubric)
+				out[i].Score, u, err = c.scoreResult(ctx, ask, out[i].Result, opts.Rubric)
 			}
 			mu.Lock()
 			defer mu.Unlock()
@@ -355,13 +362,13 @@ func (c *Client) Qualify(ctx context.Context, query string, results []SearchResu
 	return out, usage, nil
 }
 
-func (c *Client) qualifyBatch(ctx context.Context, query string, out []Qualified, opts QualifyOptions) ([]Qualified, Usage, error) {
+func (c *Client) qualifyBatch(ctx context.Context, ask Ask, out []Qualified, opts QualifyOptions) ([]Qualified, Usage, error) {
 	results := make([]SearchResult, len(out))
 	for i := range out {
 		results[i] = out[i].Result
 	}
 	if opts.Noul != "" {
-		answers, usage, err := c.noulBatch(ctx, query, opts.Noul, results)
+		answers, usage, err := c.noulBatch(ctx, ask, opts.Noul, results)
 		if err != nil {
 			return out, usage, err
 		}
@@ -374,7 +381,7 @@ func (c *Client) qualifyBatch(ctx context.Context, query string, out []Qualified
 		}
 		return out, usage, nil
 	}
-	answers, usage, err := c.scoreBatch(ctx, query, results, opts.Rubric)
+	answers, usage, err := c.scoreBatch(ctx, ask, results, opts.Rubric)
 	if err != nil {
 		return out, usage, err
 	}

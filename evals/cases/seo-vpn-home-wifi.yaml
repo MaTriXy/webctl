@@ -1,6 +1,7 @@
 name: seo-vpn-home-wifi
 # Affiliate VPN reviews will crowd out the actual answer.
 query: "do I actually need a VPN on my home wifi, security reasoning not marketing"
+goal: "A technically grounded answer to whether a VPN adds security on a trusted home network, not vendor marketing."
 num: 20
 tags: [seo, noise, security]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).

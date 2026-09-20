@@ -1,5 +1,6 @@
 name: github-rust-tui
 query: "Rust library for building terminal user interfaces with widgets and layouts"
+goal: "The Rust TUI library to use in 2026 and where its repository and docs are."
 num: 15
 tags: [github, code]
 expected_domains: [github.com]

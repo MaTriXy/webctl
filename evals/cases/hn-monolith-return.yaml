@@ -1,5 +1,6 @@
 name: hn-monolith-return
 query: "companies that moved from microservices back to a monolith and why"
+goal: "Named companies or teams that moved from microservices back to a monolith and the reasons they gave."
 num: 15
 tags: [hackernews, engineering, noise]
 expected_domains: [news.ycombinator.com]

@@ -9,8 +9,9 @@ Providers are taken in this order, skipping any that are cooling down (see `cool
 1. A `provider` set in config, if any.
 2. Your own metasearch: `searxng`, then `degoog`, when their URLs are set.
 3. Providers you set a key for, in the order exa, parallel, sonar, youcom, brave, tavily, firecrawl, keenable, serpbase, serply.
-4. `ketch`, a separate CLI that runs its own chain of free tiers.
-5. `ddg`.
+4. Only when no key is set at all: `ketch` (a separate CLI that runs its own chain of free tiers), then `ddg`.
+
+Setting a key is a choice of engine: as soon as one exists, the free tiers leave the chain. With one key and `sources: 3`, one provider answers.
 
 `sources` (default 3) providers are queried at once; a provider that errors or answers empty is replaced by the next. Lists are fused by reciprocal rank (k=60) and each result carries the engines that returned it. `--sources 1` restores a plain fallback chain. Timeouts: 12s per attempt, 30s per search.
 

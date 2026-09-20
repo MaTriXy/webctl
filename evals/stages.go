@@ -24,13 +24,13 @@ type Scraper interface {
 
 // chunkFilterer is implemented by *jev.Client; the scrape stage needs it.
 type chunkFilterer interface {
-	FilterChunks(ctx context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
+	FilterChunks(ctx context.Context, ask jev.Ask, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
 }
 
 // dupConfirmer is implemented by *jev.Client; the filter stage folds
 // near-duplicates with it, as the product does.
 type dupConfirmer interface {
-	ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error)
+	ConfirmDuplicates(ctx context.Context, ask jev.Ask, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error)
 }
 
 type evalConfirmer struct {
@@ -38,19 +38,19 @@ type evalConfirmer struct {
 	usage jev.Usage
 }
 
-func (e *evalConfirmer) ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []dedupe.Pair) ([]bool, error) {
+func (e *evalConfirmer) ConfirmDuplicates(ctx context.Context, query, goal string, results []provider.SearchResult, pairs []dedupe.Pair) ([]bool, error) {
 	jp := make([]jev.DuplicatePair, len(pairs))
 	for i, p := range pairs {
 		jp[i] = jev.DuplicatePair{A: p.A, B: p.B}
 	}
-	out, usage, err := e.c.ConfirmDuplicates(ctx, query, results, jp)
+	out, usage, err := e.c.ConfirmDuplicates(ctx, jev.Ask{Query: query, Goal: goal}, results, jp)
 	e.usage.Add(usage)
 	return out, err
 }
 
 // foldDuplicates collapses confirmed duplicate groups into their
 // best-valued member and returns the survivors in order.
-func (r *Runner) foldDuplicates(ctx context.Context, query string, qualified []jev.Qualified) ([]jev.Qualified, int, jev.Usage) {
+func (r *Runner) foldDuplicates(ctx context.Context, ask jev.Ask, qualified []jev.Qualified) ([]jev.Qualified, int, jev.Usage) {
 	dc, ok := r.Jev.(dupConfirmer)
 	if !ok {
 		return qualified, 0, jev.Usage{}
@@ -60,7 +60,7 @@ func (r *Runner) foldDuplicates(ctx context.Context, query string, qualified []j
 		results[i] = q.Result
 	}
 	ec := &evalConfirmer{c: dc}
-	groups, _, err := dedupe.Run(ctx, ec, query, results)
+	groups, _, err := dedupe.Run(ctx, ec, ask.Query, ask.Goal, results)
 	if err != nil {
 		return qualified, 0, ec.usage
 	}
@@ -166,13 +166,13 @@ type auditItem struct {
 }
 
 type auditState struct {
-	Query   string      `json:"query"`
+	jev.Ask
 	Results []auditItem `json:"results"`
 }
 
 // audit asks Jev, in one batch request, which results are low-value SEO,
 // affiliate, or content-farm pages, and returns their URLs.
-func (r *Runner) audit(ctx context.Context, query string, results []provider.SearchResult) (map[string]bool, jev.Usage, error) {
+func (r *Runner) audit(ctx context.Context, ask jev.Ask, results []provider.SearchResult) (map[string]bool, jev.Usage, error) {
 	flagged := map[string]bool{}
 	if len(results) == 0 {
 		return flagged, jev.Usage{}, nil
@@ -181,13 +181,13 @@ func (r *Runner) audit(ctx context.Context, query string, results []provider.Sea
 	if err != nil {
 		return flagged, jev.Usage{}, err
 	}
-	state := auditState{Query: query}
+	state := auditState{Ask: ask}
 	questions := make(map[string]jev.Question, len(results))
 	for i, res := range results {
 		id := AuditKey(i)
 		res.Content = ""
 		state.Results = append(state.Results, auditItem{ID: id, SearchResult: res})
-		instructions, err := p.Render(prompts.Data{Query: query, Title: res.Title, URL: res.URL, Snippet: res.Snippet, ID: id, Index: i})
+		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Title: res.Title, URL: res.URL, Snippet: res.Snippet, ID: id, Index: i})
 		if err != nil {
 			return flagged, jev.Usage{}, err
 		}
@@ -225,7 +225,7 @@ func (r *Runner) judge(ctx context.Context, c Case, st *Stage, results []provide
 	if len(c.ExpectedThemes) == 0 {
 		return nil
 	}
-	themes, usage, err := r.coverage(ctx, c.Query, c.ExpectedThemes, forJudge(results), r.threshold(c))
+	themes, usage, err := r.coverage(ctx, r.caseAsk(c), c.ExpectedThemes, forJudge(results), r.threshold(c))
 	st.Usage.Add(usage)
 	if err != nil {
 		return fmt.Errorf("theme coverage: %w", err)
@@ -269,7 +269,7 @@ func (r *Runner) stageFilter(ctx context.Context, c Case, results []provider.Sea
 
 	var kept []jev.Qualified
 	if len(results) > 0 {
-		qualified, usage, err := r.Jev.Qualify(ctx, c.Query, results, jev.QualifyOptions{
+		qualified, usage, err := r.Jev.Qualify(ctx, r.caseAsk(c), results, jev.QualifyOptions{
 			Rubric: c.Rubric,
 			Noul:   c.Noul,
 			Batch:  c.Batch || r.Batch,
@@ -280,7 +280,7 @@ func (r *Runner) stageFilter(ctx context.Context, c Case, results []provider.Sea
 		}
 		var folded int
 		var dupUsage jev.Usage
-		qualified, folded, dupUsage = r.foldDuplicates(ctx, c.Query, qualified)
+		qualified, folded, dupUsage = r.foldDuplicates(ctx, r.caseAsk(c), qualified)
 		st.Usage.Add(dupUsage)
 		st.Folded = folded
 		min := c.threshold()
@@ -390,7 +390,7 @@ func (r *Runner) stageScrape(ctx context.Context, c Case, kept []KeptResult, fla
 			defer wg.Done()
 			defer func() { <-sem }()
 			chunks := scrape.Split(text, scrape.DefaultChunkChars)
-			answers, usage, err := cf.FilterChunks(ctx, c.Query, chunks)
+			answers, usage, err := cf.FilterChunks(ctx, r.caseAsk(c), chunks)
 			o := outcome{total: len(chunks), usage: usage, err: err}
 			if err != nil {
 				o.text = text
@@ -453,7 +453,7 @@ func (r *Runner) stageScrape(ctx context.Context, c Case, kept []KeptResult, fla
 		}
 	}
 	if len(discarded) > 0 && len(c.ExpectedThemes) > 0 && st.Error == "" {
-		themes, usage, err := r.coverage(ctx, c.Query, c.ExpectedThemes, forJudge(discarded), r.threshold(c))
+		themes, usage, err := r.coverage(ctx, r.caseAsk(c), c.ExpectedThemes, forJudge(discarded), r.threshold(c))
 		st.Usage.Add(usage)
 		if err != nil {
 			st.Error = fmt.Sprintf("dropped-chunk coverage: %v", err)

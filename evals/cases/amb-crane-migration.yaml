@@ -1,5 +1,6 @@
 name: amb-crane-migration
 query: "crane migration routes and timing"
+goal: "Migration routes and timing of crane species (the birds)."
 num: 15
 tags: [ambiguous, noise]
 expected_themes:

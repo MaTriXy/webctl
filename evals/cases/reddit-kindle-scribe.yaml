@@ -1,5 +1,6 @@
 name: reddit-kindle-scribe
 query: "is the Kindle Scribe worth it for handwritten notes, owner reviews"
+goal: "Whether owners find the Kindle Scribe good enough for daily handwritten notes, and what they compare it to."
 num: 15
 tags: [reddit, opinion, noise]
 scrape: true

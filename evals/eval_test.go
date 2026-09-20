@@ -43,7 +43,7 @@ type fakeJev struct {
 	systemCalls int
 }
 
-func (f *fakeJev) Qualify(_ context.Context, _ string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error) {
+func (f *fakeJev) Qualify(_ context.Context, _ jev.Ask, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error) {
 	f.gotQualify = opts
 	if f.qualifyErr != nil {
 		return nil, jev.Usage{}, f.qualifyErr

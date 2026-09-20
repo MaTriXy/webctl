@@ -12,6 +12,9 @@ snippet shown.
 Question: {{.Question}}
 
 Query: {{.Query}}
+{{- if .Goal}}
+Goal: {{.Goal}}
+{{- end}}
 
 Result:
   Title: {{.Title}}

@@ -18,5 +18,8 @@ phrasing, or boilerplate, or if either adds material the other lacks. Judge
 only this one pair.
 
 Query: {{.Query}}
+{{- if .Goal}}
+Goal: {{.Goal}}
+{{- end}}
 
 Pair {{.ID}}: {{.Snippet}}

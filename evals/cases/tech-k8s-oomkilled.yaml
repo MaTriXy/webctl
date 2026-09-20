@@ -1,5 +1,6 @@
 name: tech-k8s-oomkilled
 query: "kubernetes pod OOMKilled but container memory usage below the limit"
+goal: "Why a Kubernetes pod is OOMKilled while its reported memory is under the limit, and how to diagnose it."
 num: 15
 tags: [engineering, kubernetes]
 scrape: true

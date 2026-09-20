@@ -1,6 +1,7 @@
 # Noul mode: keep only peer-reviewed / preprint research about the query.
 name: noul-research-only
 query: "sparse autoencoders for interpretability"
+goal: "Research papers on sparse autoencoders for interpretability, not blog posts."
 num: 15
 noul: "Is this result a research paper or preprint (e.g. arXiv, OpenReview, a journal) rather than a blog post, news article, or product page?"
 min_score: 0.6

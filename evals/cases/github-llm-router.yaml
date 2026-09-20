@@ -1,5 +1,6 @@
 name: github-llm-router
 query: "python library to call OpenAI, Anthropic, and other LLM providers through one interface"
+goal: "A specific Python library that fronts OpenAI, Anthropic, and others with one API, with its repository."
 num: 15
 tags: [github, code, noise]
 expected_domains: [github.com]

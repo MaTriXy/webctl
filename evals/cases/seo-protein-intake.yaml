@@ -1,5 +1,6 @@
 name: seo-protein-intake
 query: "how much protein per day to build muscle, what the studies say"
+goal: "What research and meta-analyses say about daily protein for muscle gain, as grams per kilogram."
 num: 20
 tags: [seo, noise, health]
 scrape: true
