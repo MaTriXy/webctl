@@ -3,10 +3,25 @@
 Web search from the terminal, filtered by [Jev](https://typesafe.ai) so only relevant results reach your context window.
 
 ```
-query ──▶ search backend ──▶ Jev relevance filter ──▶ ranked results
-          (exa / parallel /    (score 0–3 per hit:      (noise dropped,
-           sonar / ddg /        topic + source quality,  optional page
-           searxng)             drop below threshold)    scraping)
+You:    "latest advances in mechanistic interpretability 2025"
+         │
+         ▼
+    ┌─────────────┐
+    │  Search API  │  (exa / parallel / sonar / youcom / ddg / searxng)
+    │  50 results  │
+    └──────┬──────┘
+           │
+           ▼
+    ┌─────────────┐
+    │     Jev      │  typed relevance scoring
+    │  per result  │  (score 0–3: topic + source quality)
+    └──────┬──────┘
+           │
+           ▼
+    ┌─────────────┐
+    │  8 results   │  ✂️  low scorers dropped
+    │  (relevant)  │  ✅  high scorers kept
+    └─────────────┘
 ```
 
 ## Install
