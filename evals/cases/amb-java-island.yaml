@@ -1,7 +1,6 @@
 name: amb-java-island
 query: "java island volcano hiking travel guide"
 num: 15
-min_score: 2.0
 tags: [ambiguous, noise, travel]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
 junk_domains: [javaprivatetour.com, thebitjoy.com, duhtravel.com, tripperhood.com, travelandhotelsexpert.com, journeytribune.com, authentic-indonesia.com]

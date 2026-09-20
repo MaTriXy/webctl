@@ -46,7 +46,7 @@ func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, sonar, youcom, ddg, or searxng (default: auto — keyed providers with a key, then keyless exa, parallel, and youcom, then ddg, then searxng)")
 	f.IntVarP(&sf.num, "num", "n", 0, "number of results to request from the provider (default 10)")
-	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "minimum Jev relevance score to keep a result (default: one below the rubric's top, i.e. 2.0 on the 0–3 scale; with --noul, minimum P(yes), default 0.5)")
+	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "minimum Jev relevance score to keep a result (default 1.8 on the 0–3 scale, i.e. Jev leans 'Useful' or better; with a custom rubric, 0.2 below its second-highest level; with --noul, minimum P(yes), default 0.5)")
 	f.BoolVar(&sf.jsonOut, "json", false, "emit results as JSON")
 	f.BoolVar(&sf.urlsOnly, "urls-only", false, "print only result URLs, one per line")
 	f.BoolVar(&sf.noFilter, "no-filter", false, "skip Jev qualification and print raw provider results")
@@ -213,8 +213,9 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		opts.Rubric = rubric
 		max := float64(len(rubric) - 1)
 		if !explicitMin {
-			// Same rule as the default rubric: keep the top two levels.
-			opts.MinScore = math.Max(max-1, 0)
+			// Same rule as the default rubric: lean toward the second-highest
+			// level or better.
+			opts.MinScore = math.Max(max-1.2, 0)
 		}
 		if opts.MinScore > max {
 			return searchOptions{}, fmt.Errorf("--min-score %.2f exceeds the rubric's top score of %g", opts.MinScore, max)

@@ -63,10 +63,11 @@ func coolingDown(name string) bool {
 	return now().Before(cooldownUntil[name])
 }
 
-// noteRateLimit starts the cooldown for name if err is a 429.
+// noteRateLimit starts the cooldown for name if err is a 429 or a 402
+// (You.com's free profile answers 402 once its quota is spent).
 func noteRateLimit(name string, err error) {
 	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.Status != 429 {
+	if !errors.As(err, &apiErr) || (apiErr.Status != 429 && apiErr.Status != 402) {
 		return
 	}
 	cooldownMu.Lock()

@@ -234,7 +234,7 @@ func TestSearchDefaultFiltersAndSorts(t *testing.T) {
 	if strings.Contains(out, "Probabilities") || strings.Contains(out, "✓ Kept") {
 		t.Errorf("verbose-only lines should not appear:\n%s", out)
 	}
-	if !strings.Contains(errOut, "exa: 3 results → 2 kept (min score 2)") {
+	if !strings.Contains(errOut, "exa: 3 results → 2 kept (min score 1.8)") {
 		t.Errorf("summary missing from stderr: %q", errOut)
 	}
 }
@@ -252,7 +252,7 @@ func TestSearchVerbose(t *testing.T) {
 		"[3] SEO blog — content-farm.example",
 		"Probabilities: {0: 0.05, 1: 0.05, 2: 0.05, 3: 0.80}",
 		"✓ Kept",
-		"✗ Filtered (below 2 threshold)",
+		"✗ Filtered (below 1.8 threshold)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verbose output missing %q:\n%s", want, out)

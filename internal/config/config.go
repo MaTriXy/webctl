@@ -26,7 +26,7 @@ import (
 const (
 	DefaultProvider = "" // auto: first usable in Chain order
 	DefaultNum      = 10
-	DefaultMinScore = 2.0
+	DefaultMinScore = 1.8
 	DefaultJevURL   = "https://api.typesafe.ai"
 	DefaultJevModel = "jev-latest"
 	EnvPrefix       = "SMART_SEARCH"

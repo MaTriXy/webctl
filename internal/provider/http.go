@@ -30,6 +30,8 @@ func (e *APIError) Error() string {
 		msg += " (check your API key with `smart_search keys validate`)"
 	case http.StatusTooManyRequests:
 		msg += " (rate limited; try again shortly)"
+	case http.StatusPaymentRequired:
+		msg += " (free quota spent; add a key or wait)"
 	}
 	return msg
 }

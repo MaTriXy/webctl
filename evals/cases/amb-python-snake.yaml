@@ -2,7 +2,6 @@ name: amb-python-snake
 # The programming language will crowd in.
 query: "python snake habitat and diet in the wild"
 num: 15
-min_score: 2.0
 tags: [ambiguous, noise]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
 junk_domains: [a-z-animals.com, petnaturehub.com, snakesnuggles.com, globalanimalguide.org, biodb.com, animal-pedia.org]
