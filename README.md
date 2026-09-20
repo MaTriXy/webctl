@@ -4,7 +4,6 @@ Smart web search CLI for agents, backed by [Jev](https://typesafe.ai). Saves a l
 
 ```bash
 webctl search "final score san francisco giants september 19th baseball" \
-  --goal "I'm looking for the score of the specific Giants game from last night, September 19th."
 ```
 
 The query goes to the search engines; the goal goes to every Jev judge next to it, so results are scored against what you actually need. `webctl "<query>"` works too, without a goal.
