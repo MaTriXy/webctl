@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Name identifies a key slot in the store.
@@ -16,14 +17,20 @@ const (
 	Exa      Name = "exa"
 	Parallel Name = "parallel"
 	Sonar    Name = "sonar"
+	SearXNG  Name = "searxng"
 	Jev      Name = "jev"
 )
 
 // SearchProviders lists the key names that correspond to search providers.
-var SearchProviders = []Name{Exa, Parallel, Sonar}
+// SearXNG's slot holds an instance URL rather than a secret; DuckDuckGo
+// needs nothing and so has no slot.
+var SearchProviders = []Name{Exa, Parallel, Sonar, SearXNG}
 
 // All lists every key name, search providers first.
-var All = []Name{Exa, Parallel, Sonar, Jev}
+var All = []Name{Exa, Parallel, Sonar, SearXNG, Jev}
+
+// Secret reports whether the slot holds a credential that should be masked.
+func (n Name) Secret() bool { return n != SearXNG }
 
 // EnvVar returns the environment variable that overrides this key.
 func (n Name) EnvVar() string {
@@ -34,6 +41,8 @@ func (n Name) EnvVar() string {
 		return "PARALLEL_API_KEY"
 	case Sonar:
 		return "SONAR_API_KEY"
+	case SearXNG:
+		return "SEARXNG_URL"
 	case Jev:
 		return "JEV_API_KEY"
 	}
@@ -49,6 +58,8 @@ func (n Name) Display() string {
 		return "Parallel"
 	case Sonar:
 		return "Sonar (Perplexity)"
+	case SearXNG:
+		return "SearXNG URL"
 	case Jev:
 		return "Jev (TypeSafe)"
 	}
@@ -64,6 +75,8 @@ func (n Name) URL() string {
 		return "https://parallel.ai"
 	case Sonar:
 		return "https://perplexity.ai"
+	case SearXNG:
+		return "https://docs.searxng.org"
 	case Jev:
 		return "https://typesafe.ai"
 	}
@@ -77,7 +90,7 @@ func Parse(s string) (Name, error) {
 			return n, nil
 		}
 	}
-	return "", fmt.Errorf("unknown key %q (expected one of exa, parallel, sonar, jev)", s)
+	return "", fmt.Errorf("unknown key %q (expected one of exa, parallel, sonar, searxng, jev)", s)
 }
 
 // Store is the JSON shape of keys.json. Empty strings mean "not configured".
@@ -85,6 +98,7 @@ type Store struct {
 	ExaAPIKey      string `json:"exa_api_key"`
 	ParallelAPIKey string `json:"parallel_api_key"`
 	SonarAPIKey    string `json:"sonar_api_key"`
+	SearXNGURL     string `json:"searxng_url"`
 	JevAPIKey      string `json:"jev_api_key"`
 }
 
@@ -170,6 +184,8 @@ func (s *Store) Get(name Name) string {
 		return s.ParallelAPIKey
 	case Sonar:
 		return s.SonarAPIKey
+	case SearXNG:
+		return s.SearXNGURL
 	case Jev:
 		return s.JevAPIKey
 	}
@@ -185,6 +201,8 @@ func (s *Store) Set(name Name, value string) {
 		s.ParallelAPIKey = value
 	case Sonar:
 		s.SonarAPIKey = value
+	case SearXNG:
+		s.SearXNGURL = value
 	case Jev:
 		s.JevAPIKey = value
 	}
@@ -208,6 +226,9 @@ func (s *Store) ConfiguredProviders() []Name {
 func Mask(key string) string {
 	if key == "" {
 		return "(not set)"
+	}
+	if strings.HasPrefix(key, "http://") || strings.HasPrefix(key, "https://") {
+		return key // URLs are not secrets
 	}
 	if len(key) <= 8 {
 		return "****"

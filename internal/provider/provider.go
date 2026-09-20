@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -78,6 +79,11 @@ func New(name, cred string, opts Options) (Provider, error) {
 	switch Normalize(name) {
 	case "ddg":
 		return NewDDG(opts), nil
+	case "searxng":
+		if cred == "" && opts.BaseURL == "" {
+			return nil, errors.New("searxng: instance URL is empty")
+		}
+		return NewSearXNG(cred, opts), nil
 	}
 	if cred == "" {
 		return nil, fmt.Errorf("%s: API key is empty", name)

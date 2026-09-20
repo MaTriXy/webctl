@@ -21,7 +21,7 @@ func TestNameMetadata(t *testing.T) {
 	if Name("bogus").EnvVar() != "" || Name("bogus").Display() != "bogus" {
 		t.Error("unknown names should degrade gracefully")
 	}
-	if len(SearchProviders) != 3 || len(All) != 4 || All[len(All)-1] != Jev {
+	if len(SearchProviders) != 4 || len(All) != 5 || All[len(All)-1] != Jev {
 		t.Errorf("SearchProviders=%v All=%v", SearchProviders, All)
 	}
 }

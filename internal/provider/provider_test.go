@@ -44,6 +44,21 @@ func mockServer(t *testing.T, status int, body string) (*httptest.Server, *captu
 	return srv, c
 }
 
+// mockServerFunc is mockServer with a handler that inspects the query string.
+func mockServerFunc(t *testing.T, fn func(query map[string][]string) (int, string)) (*httptest.Server, *capture) {
+	t.Helper()
+	c := &capture{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c.Method, c.Path, c.Headers = r.Method, r.URL.Path, r.Header.Clone()
+		status, body := fn(r.URL.Query())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, c
+}
+
 func TestNew(t *testing.T) {
 	for _, name := range []string{"exa", "parallel", "sonar", "perplexity", "EXA", " Exa "} {
 		p, err := New(name, "k", Options{})

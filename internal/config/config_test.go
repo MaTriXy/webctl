@@ -197,6 +197,42 @@ func TestProviderKey(t *testing.T) {
 	if _, err := cfg.ProviderKey("bing"); err == nil || !strings.Contains(err.Error(), "unknown provider") {
 		t.Errorf("bing err = %v", err)
 	}
+	if k, err := cfg.ProviderKey("ddg"); err != nil || k != "" {
+		t.Errorf("ddg needs no key: %q, %v", k, err)
+	}
+	if _, err := cfg.ProviderKey("searxng"); err == nil || !strings.Contains(err.Error(), "SEARXNG_URL") {
+		t.Errorf("missing searxng url err = %v", err)
+	}
+	cfg.Keys.Set(keys.SearXNG, "http://sx:8080")
+	if k, err := cfg.ProviderKey("searxng"); err != nil || k != "http://sx:8080" {
+		t.Errorf("searxng = %q, %v", k, err)
+	}
+	if !cfg.Usable("ddg") || !cfg.Usable("exa") || !cfg.Usable("searxng") || cfg.Usable("sonar") || cfg.Usable("bing") {
+		t.Error("Usable mismatch")
+	}
+}
+
+func TestLoadSearXNGURLFromConfigYAML(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SEARXNG_URL", "")
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("searxng_url: http://sx.local:8080/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(Options{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Keys.Get(keys.SearXNG); got != "http://sx.local:8080/" || cfg.KeySource[keys.SearXNG] != "config" {
+		t.Errorf("searxng from yaml = %q (%s)", got, cfg.KeySource[keys.SearXNG])
+	}
+	t.Setenv("SEARXNG_URL", "http://env:1")
+	cfg, err = Load(Options{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Keys.Get(keys.SearXNG); got != "http://env:1" || cfg.KeySource[keys.SearXNG] != "env" {
+		t.Errorf("env should beat yaml: %q (%s)", got, cfg.KeySource[keys.SearXNG])
+	}
 }
 
 func TestJevKey(t *testing.T) {

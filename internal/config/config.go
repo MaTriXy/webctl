@@ -2,7 +2,7 @@
 //
 // Precedence (highest first):
 //  1. command-line flags (bound by the CLI layer)
-//  2. environment variables (EXA_API_KEY, JEV_API_KEY, SMART_SEARCH_PROVIDER, ...)
+//  2. environment variables (EXA_API_KEY, JEV_API_KEY, SEARXNG_URL, SMART_SEARCH_PROVIDER, ...)
 //  3. ~/smart_search/config.yaml (optional)
 //  4. ~/smart_search/keys.json (for API keys only)
 //  5. built-in defaults
@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/dorkitude/smart_search/internal/keys"
+	"github.com/dorkitude/smart_search/internal/provider"
 )
 
 // Defaults.
@@ -37,7 +38,7 @@ type Config struct {
 	// KeysPath is the path to keys.json.
 	KeysPath string
 
-	// Provider is the default search provider name (exa|parallel|sonar).
+	// Provider is the preferred search provider name, or "" for auto.
 	Provider string
 	// Num is the default number of results to request.
 	Num int
@@ -48,7 +49,7 @@ type Config struct {
 	JevBaseURL string
 	JevModel   string
 
-	// Keys holds the resolved API keys (env overrides file).
+	// Keys holds the resolved API keys and the SearXNG URL (env overrides file).
 	Keys *keys.Store
 	// KeySource records where each key came from ("env", "file", or "").
 	KeySource map[keys.Name]string
@@ -70,6 +71,8 @@ func New() *viper.Viper {
 	v.SetDefault("min_score", DefaultMinScore)
 	v.SetDefault("jev.base_url", DefaultJevURL)
 	v.SetDefault("jev.model", DefaultJevModel)
+	// searxng_url may also be set at the top level of config.yaml.
+	v.SetDefault("searxng_url", "")
 
 	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
@@ -140,6 +143,13 @@ func Load(opts Options) (*Config, error) {
 			cfg.KeySource[n] = "file"
 		}
 	}
+	// searxng_url in config.yaml fills the slot when neither env nor keys.json set it.
+	if !cfg.Keys.Has(keys.SearXNG) {
+		if val := strings.TrimSpace(v.GetString("searxng_url")); val != "" {
+			cfg.Keys.Set(keys.SearXNG, val)
+			cfg.KeySource[keys.SearXNG] = "config"
+		}
+	}
 
 	if cfg.Num <= 0 {
 		return nil, fmt.Errorf("num must be positive, got %d", cfg.Num)
@@ -147,18 +157,33 @@ func Load(opts Options) (*Config, error) {
 	return cfg, nil
 }
 
-// ProviderKey returns the API key for the named search provider, with an
-// actionable error if it's missing.
+// ProviderKey returns the credential for the named search provider: the API
+// key for keyed providers, the instance URL for searxng, and "" for ddg. The
+// error is actionable when the credential is missing.
 func (c *Config) ProviderKey(name string) (string, error) {
+	name = provider.Normalize(name)
+	if name == "ddg" {
+		return "", nil
+	}
 	n, err := keys.Parse(name)
 	if err != nil || n == keys.Jev {
-		return "", fmt.Errorf("unknown provider %q (expected exa, parallel, or sonar)", name)
+		return "", fmt.Errorf("unknown provider %q (expected one of %s)", name, strings.Join(provider.Names(), ", "))
 	}
 	key := c.Keys.Get(n)
 	if key == "" {
+		if n == keys.SearXNG {
+			return "", fmt.Errorf("no SearXNG URL configured: run `smart_search setup` or set %s", n.EnvVar())
+		}
 		return "", fmt.Errorf("no %s API key configured: run `smart_search setup` or set %s", n.Display(), n.EnvVar())
 	}
 	return key, nil
+}
+
+// Usable reports whether the named provider can be constructed with the
+// current configuration.
+func (c *Config) Usable(name string) bool {
+	_, err := c.ProviderKey(name)
+	return err == nil
 }
 
 // JevKey returns the Jev API key, with an actionable error if it's missing.
