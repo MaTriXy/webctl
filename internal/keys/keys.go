@@ -1,4 +1,4 @@
-// Package keys manages the on-disk API key store (~/smart_search/keys.json).
+// Package keys manages the on-disk API key store (~/secrets/keys.json).
 package keys
 
 import (
@@ -102,7 +102,7 @@ type Store struct {
 	JevAPIKey      string `json:"jev_api_key"`
 }
 
-// DefaultDir returns ~/smart_search.
+// DefaultDir returns ~/smart_search, the config directory.
 func DefaultDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -111,13 +111,14 @@ func DefaultDir() (string, error) {
 	return filepath.Join(home, "smart_search"), nil
 }
 
-// DefaultPath returns ~/smart_search/keys.json.
+// DefaultPath returns ~/secrets/keys.json. The file may be shared with other
+// tools; Save preserves fields it does not know.
 func DefaultPath() (string, error) {
-	dir, err := DefaultDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(dir, "keys.json"), nil
+	return filepath.Join(home, "secrets", "keys.json"), nil
 }
 
 // Load reads the store at path. A missing file yields an empty store, not an error.
@@ -136,16 +137,17 @@ func Load(path string) (*Store, error) {
 	return &s, nil
 }
 
-// Save writes the store to path with 0600 permissions, creating the parent dir (0700) if needed.
+// Save writes the store to path with 0600 permissions, creating the parent dir
+// (0700) if needed. Fields already in the file that Store does not define are
+// kept, so a keys file shared with other tools is not clobbered.
 func (s *Store) Save(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
 	}
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := s.merged(path)
 	if err != nil {
-		return fmt.Errorf("encode keys: %w", err)
+		return err
 	}
-	data = append(data, '\n')
 
 	// Write to a temp file then rename so a crash never leaves a half-written keys.json.
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".keys-*.json")
@@ -173,6 +175,36 @@ func (s *Store) Save(path string) error {
 		return fmt.Errorf("replace %s: %w", path, err)
 	}
 	return os.Chmod(path, 0o600)
+}
+
+// merged returns the JSON to write: the file's existing fields, if any,
+// overlaid with this store's. Empty values are written explicitly so an
+// unset key reads back as unset.
+func (s *Store) merged(path string) ([]byte, error) {
+	fields := map[string]json.RawMessage{}
+	if existing, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(existing, &fields); err != nil {
+			return nil, fmt.Errorf("parse %s: %w (fix the JSON or delete the file)", path, err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	own, err := json.Marshal(s)
+	if err != nil {
+		return nil, fmt.Errorf("encode keys: %w", err)
+	}
+	var ownFields map[string]json.RawMessage
+	if err := json.Unmarshal(own, &ownFields); err != nil {
+		return nil, fmt.Errorf("encode keys: %w", err)
+	}
+	for k, v := range ownFields {
+		fields[k] = v
+	}
+	data, err := json.MarshalIndent(fields, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode keys: %w", err)
+	}
+	return append(data, '\n'), nil
 }
 
 // Get returns the key for name.

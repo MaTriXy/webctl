@@ -4,7 +4,8 @@
 //  1. command-line flags (bound by the CLI layer)
 //  2. environment variables (EXA_API_KEY, JEV_API_KEY, SEARXNG_URL, SMART_SEARCH_PROVIDER, ...)
 //  3. ~/smart_search/config.yaml (optional)
-//  4. ~/smart_search/keys.json (for API keys only)
+//  4. ~/secrets/keys.json (for API keys only; --keys-file, SMART_SEARCH_KEYS_FILE,
+//     or keys_file in config.yaml point elsewhere)
 //  5. built-in defaults
 package config
 
@@ -59,6 +60,8 @@ type Config struct {
 type Options struct {
 	// Dir overrides ~/smart_search. Mostly for tests.
 	Dir string
+	// KeysPath overrides the keys file (default ~/secrets/keys.json).
+	KeysPath string
 	// Viper lets the caller supply a pre-configured instance (e.g. with flags bound).
 	Viper *viper.Viper
 }
@@ -73,6 +76,8 @@ func New() *viper.Viper {
 	v.SetDefault("jev.model", DefaultJevModel)
 	// searxng_url may also be set at the top level of config.yaml.
 	v.SetDefault("searxng_url", "")
+	// keys_file: SMART_SEARCH_KEYS_FILE or config.yaml; "" means keys.DefaultPath().
+	v.SetDefault("keys_file", "")
 
 	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
@@ -113,7 +118,17 @@ func Load(opts Options) (*Config, error) {
 		}
 	}
 
-	keysPath := filepath.Join(dir, "keys.json")
+	keysPath := opts.KeysPath
+	if keysPath == "" {
+		keysPath = strings.TrimSpace(v.GetString("keys_file"))
+	}
+	if keysPath == "" {
+		p, err := keys.DefaultPath()
+		if err != nil {
+			return nil, err
+		}
+		keysPath = p
+	}
 	store, err := keys.Load(keysPath)
 	if err != nil {
 		return nil, err

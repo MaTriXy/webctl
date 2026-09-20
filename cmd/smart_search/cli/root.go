@@ -17,6 +17,8 @@ var (
 
 	// configDir overrides ~/smart_search when set via --config-dir.
 	configDir string
+	// keysFile overrides ~/secrets/keys.json when set via --keys-file.
+	keysFile string
 
 	// v is the shared viper instance; flags are bound into it per command.
 	v *viper.Viper
@@ -50,6 +52,7 @@ Get started:
 		},
 	}
 	root.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default ~/smart_search)")
+	root.PersistentFlags().StringVar(&keysFile, "keys-file", "", "API keys file (default ~/secrets/keys.json)")
 
 	addSearchFlags(root)
 	root.AddCommand(newSetupCmd())
@@ -69,7 +72,7 @@ func Execute() error {
 	return nil
 }
 
-// loadConfig resolves configuration, honoring --config-dir.
+// loadConfig resolves configuration, honoring --config-dir and --keys-file.
 func loadConfig() (*config.Config, error) {
-	return config.Load(config.Options{Dir: configDir, Viper: v})
+	return config.Load(config.Options{Dir: configDir, KeysPath: keysFile, Viper: v})
 }

@@ -49,7 +49,7 @@ func TestDefaultPaths(t *testing.T) {
 		t.Errorf("DefaultDir = %q, %v", dir, err)
 	}
 	p, err := DefaultPath()
-	if err != nil || p != filepath.Join(home, "smart_search", "keys.json") {
+	if err != nil || p != filepath.Join(home, "secrets", "keys.json") {
 		t.Errorf("DefaultPath = %q, %v", p, err)
 	}
 }
@@ -210,5 +210,23 @@ func TestMask(t *testing.T) {
 		if got := Mask(in); got != want {
 			t.Errorf("Mask(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestSavePreservesForeignFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "keys.json")
+	if err := os.WriteFile(path, []byte(`{"other_tool_token":"keep-me","jev_api_key":"old"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&Store{JevAPIKey: "new"}).Save(path); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]string
+	data, _ := os.ReadFile(path)
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["other_tool_token"] != "keep-me" || got["jev_api_key"] != "new" || got["exa_api_key"] != "" {
+		t.Errorf("file = %v", got)
 	}
 }

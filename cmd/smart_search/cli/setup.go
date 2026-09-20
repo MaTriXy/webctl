@@ -23,7 +23,7 @@ a self-hosted SearXNG URL, and Jev. Everything is optional: with no keys at
 all, searches use DuckDuckGo (ddg) and --no-filter skips Jev.
 
 Key input is masked, each entry is validated with a lightweight API call, and
-settings are stored in ~/smart_search/keys.json with mode 0600.
+settings are stored in ~/secrets/keys.json with mode 0600.
 
 Re-run at any time to add, rotate, or re-validate keys.`,
 		Args: cobra.NoArgs,

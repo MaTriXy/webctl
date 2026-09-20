@@ -33,7 +33,7 @@ func writeFile(t *testing.T, path, content string) {
 func TestLoadDefaults(t *testing.T) {
 	clearEnv(t)
 	dir := t.TempDir()
-	cfg, err := Load(Options{Dir: dir})
+	cfg, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,8 +59,8 @@ func TestLoadDefaultDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Dir != filepath.Join(home, "smart_search") {
-		t.Errorf("Dir = %q", cfg.Dir)
+	if cfg.Dir != filepath.Join(home, "smart_search") || cfg.KeysPath != filepath.Join(home, "secrets", "keys.json") {
+		t.Errorf("paths = %q %q", cfg.Dir, cfg.KeysPath)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestLoadKeysFile(t *testing.T) {
 	clearEnv(t)
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "keys.json"), `{"exa_api_key":"exa-file","jev_api_key":"jev-file","sonar_api_key":""}`)
-	cfg, err := Load(Options{Dir: dir})
+	cfg, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "keys.json"), `{"exa_api_key":"exa-file"}`)
 	t.Setenv("EXA_API_KEY", "  exa-env  ")
 	t.Setenv("PARALLEL_API_KEY", "par-env")
-	cfg, err := Load(Options{Dir: dir})
+	cfg, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ jev:
   base_url: https://jev.example/
   model: jev-2
 `)
-	cfg, err := Load(Options{Dir: dir})
+	cfg, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestLoadEnvOverridesConfigYAML(t *testing.T) {
 	t.Setenv("SMART_SEARCH_PROVIDER", "parallel")
 	t.Setenv("SMART_SEARCH_NUM", "7")
 	t.Setenv("SMART_SEARCH_JEV_MODEL", "jev-env")
-	cfg, err := Load(Options{Dir: dir})
+	cfg, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestLoadBadConfigYAML(t *testing.T) {
 	clearEnv(t)
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "config.yaml"), "provider: [unclosed\n")
-	if _, err := Load(Options{Dir: dir}); err == nil || !strings.Contains(err.Error(), "config.yaml") {
+	if _, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")}); err == nil || !strings.Contains(err.Error(), "config.yaml") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -156,7 +156,7 @@ func TestLoadBadKeysJSON(t *testing.T) {
 	clearEnv(t)
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "keys.json"), "{oops")
-	if _, err := Load(Options{Dir: dir}); err == nil || !strings.Contains(err.Error(), "keys.json") {
+	if _, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")}); err == nil || !strings.Contains(err.Error(), "keys.json") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -165,7 +165,7 @@ func TestLoadRejectsNonPositiveNum(t *testing.T) {
 	clearEnv(t)
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "config.yaml"), "num: 0\n")
-	if _, err := Load(Options{Dir: dir}); err == nil || !strings.Contains(err.Error(), "num must be positive") {
+	if _, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")}); err == nil || !strings.Contains(err.Error(), "num must be positive") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -218,7 +218,7 @@ func TestLoadSearXNGURLFromConfigYAML(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("searxng_url: http://sx.local:8080/\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := Load(Options{Dir: dir})
+	cfg, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestLoadSearXNGURLFromConfigYAML(t *testing.T) {
 		t.Errorf("searxng from yaml = %q (%s)", got, cfg.KeySource[keys.SearXNG])
 	}
 	t.Setenv("SEARXNG_URL", "http://env:1")
-	cfg, err = Load(Options{Dir: dir})
+	cfg, err = Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,5 +273,20 @@ func TestChain(t *testing.T) {
 		if (err2 != nil) != tc.wantErr || (len(tc.want) > 0 && first != tc.want[0]) {
 			t.Errorf("%s: ResolveProvider = %q, %v", tc.name, first, err2)
 		}
+	}
+}
+
+func TestKeysFileEnv(t *testing.T) {
+	clearEnv(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "elsewhere.json")
+	writeFile(t, path, `{"jev_api_key":"from-elsewhere"}`)
+	t.Setenv(EnvPrefix+"_KEYS_FILE", path)
+	cfg, err := Load(Options{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeysPath != path || cfg.Keys.Get(keys.Jev) != "from-elsewhere" {
+		t.Errorf("KeysPath = %q, jev = %q", cfg.KeysPath, cfg.Keys.Get(keys.Jev))
 	}
 }

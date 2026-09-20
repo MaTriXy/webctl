@@ -180,7 +180,7 @@ func (h *harness) run(args ...string) (string, string, error) {
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errOut)
-	root.SetArgs(append([]string{"--config-dir", h.dir}, args...))
+	root.SetArgs(append([]string{"--config-dir", h.dir, "--keys-file", filepath.Join(h.dir, "keys.json")}, args...))
 	err := root.Execute()
 	return out.String(), errOut.String(), err
 }

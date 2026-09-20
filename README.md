@@ -24,7 +24,7 @@ smart_search "latest advances in mechanistic interpretability"
 Zero config: with no keys, `ddg` (DuckDuckGo) is used. Add a Jev key to enable filtering, and search API keys for better backends:
 
 ```bash
-smart_search setup        # interactive; keys stored in ~/smart_search/keys.json (0600)
+smart_search setup        # interactive; keys stored in ~/secrets/keys.json (0600)
 ```
 
 | Setting | Env var | Needed for |
@@ -32,6 +32,8 @@ smart_search setup        # interactive; keys stored in ~/smart_search/keys.json
 | Jev key | `JEV_API_KEY` | relevance filtering, `--filter-chunks` |
 | Exa / Parallel / Sonar key | `EXA_API_KEY`, `PARALLEL_API_KEY`, `SONAR_API_KEY` | keyed backends |
 | SearXNG URL | `SEARXNG_URL` | self-hosted metasearch |
+
+The keys file may be shared with other tools; unknown fields are preserved. Point elsewhere with `--keys-file`, `SMART_SEARCH_KEYS_FILE`, or `keys_file` in `~/smart_search/config.yaml`.
 
 Without a Jev key, pass `--no-filter` to get raw results.
 
