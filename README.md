@@ -72,7 +72,7 @@ Filter chunks of scraped webpages to save even more tokens (`--scrape --filter-c
 
 ```
       ┌──────────────┐
-      │ Scraped page │  (~2000 chars per chunk)
+      │ Scraped page │  (2000 chars per chunk, judged with 20% overlap)
       │  25 chunks   │
       └───────┬──────┘
               │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │
@@ -203,12 +203,13 @@ webctl search "q" --no-filter                              # skip Jev (works wit
 
 ### Scraping
 
-Fetch page text for each kept result; `--filter-chunks` keeps only the ~2000-char chunks Jev says are relevant. Agents: prefer this over reading pages yourself most of the time, since only the relevant chunks reach your context. [docs/scraping.md](docs/scraping.md)
+Fetch page text for each kept result; `--filter-chunks` keeps only the chunks Jev says are relevant (`--chunk-chars`, default 2000; judged with 20% overlap, output without it). Agents: prefer this over reading pages yourself most of the time, since only the relevant chunks reach your context. [docs/scraping.md](docs/scraping.md)
 
 ```bash
 webctl search "q" --scrape
 webctl search "q" --scrape --filter-chunks
 webctl search "q" --scrape --max-chars 20000  # default 50000 per page
+webctl search "q" --scrape --filter-chunks --chunk-chars 1000  # default 2000
 ```
 
 ### Dedupe

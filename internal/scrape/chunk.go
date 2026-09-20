@@ -112,3 +112,53 @@ func splitSentences(s string) []string {
 func Join(chunks []string) string {
 	return strings.Join(chunks, "\n\n")
 }
+
+// OverlapFraction is the share of a chunk's size that is carried over from
+// the previous chunk when a chunk is judged, so a heading or sentence cut at
+// a boundary is still seen with what follows it.
+const OverlapFraction = 0.2
+
+// Overlap returns the overlap length in runes for a chunk size.
+func Overlap(chunkChars int) int {
+	if chunkChars <= 0 {
+		chunkChars = DefaultChunkChars
+	}
+	return int(float64(chunkChars) * OverlapFraction)
+}
+
+// OverlapTails returns, aligned with chunks, the context a judge should see
+// before each one: the last overlap runes of the previous chunk, snapped
+// forward to a sentence or word boundary. The first entry is "". Chunks are
+// not modified, so kept chunks are output without the overlap.
+func OverlapTails(chunks []string, overlap int) []string {
+	out := make([]string, len(chunks))
+	for i := 1; i < len(chunks) && overlap > 0; i++ {
+		out[i] = tail(chunks[i-1], overlap)
+	}
+	return out
+}
+
+// tail returns at most n trailing runes of s, starting at the first sentence
+// boundary inside that window, or the first word boundary when there is no
+// sentence boundary, or the whole window when there is neither.
+func tail(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return strings.TrimSpace(s)
+	}
+	w := r[len(r)-n:]
+	for i := 0; i < len(w)-1; i++ {
+		switch w[i] {
+		case '.', '!', '?', '\n':
+			if w[i+1] == ' ' || w[i+1] == '\n' {
+				return strings.TrimSpace(string(w[i+1:]))
+			}
+		}
+	}
+	for i := 0; i < len(w)-1; i++ {
+		if w[i] == ' ' || w[i] == '\n' {
+			return strings.TrimSpace(string(w[i+1:]))
+		}
+	}
+	return strings.TrimSpace(string(w))
+}

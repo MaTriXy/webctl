@@ -59,9 +59,12 @@ type fakeQualifier struct {
 	relevantWord   string
 	unansweredWord string
 	chunkErr       error
-	mu             sync.Mutex
-	chunkCalls     int
-	gotChunks      [][]string
+	// chunkUnjudged, when set, returns a *jev.PartialFilterError naming these
+	// chunk indices, as a page whose batches partly failed would.
+	chunkUnjudged []int
+	mu            sync.Mutex
+	chunkCalls    int
+	gotChunks     [][]jev.Chunk
 }
 
 // dupes maps "urlA|urlB" to whether the fake confirms them as duplicates.
@@ -73,7 +76,7 @@ func (f *fakeQualifier) ConfirmDuplicates(_ context.Context, _ jev.Ask, results 
 	return out, jev.Usage{InputTokens: 7}, nil
 }
 
-func (f *fakeQualifier) FilterChunks(_ context.Context, ask jev.Ask, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error) {
+func (f *fakeQualifier) FilterChunks(_ context.Context, ask jev.Ask, chunks []jev.Chunk) ([]*jev.NoulAnswer, jev.Usage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.chunkCalls++
@@ -83,7 +86,7 @@ func (f *fakeQualifier) FilterChunks(_ context.Context, ask jev.Ask, chunks []st
 	}
 	out := make([]*jev.NoulAnswer, len(chunks))
 	for i, c := range chunks {
-		lc := strings.ToLower(c)
+		lc := strings.ToLower(c.Text) // judged on the chunk alone, as the prompt instructs
 		if f.unansweredWord != "" && strings.Contains(lc, strings.ToLower(f.unansweredWord)) {
 			continue
 		}
@@ -92,6 +95,16 @@ func (f *fakeQualifier) FilterChunks(_ context.Context, ask jev.Ask, chunks []st
 			p = 0.9
 		}
 		out[i] = &jev.NoulAnswer{Probability: p}
+	}
+	if len(f.chunkUnjudged) > 0 {
+		for _, i := range f.chunkUnjudged {
+			if i < len(out) {
+				out[i] = nil
+			}
+		}
+		return out, jev.Usage{}, &jev.PartialFilterError{
+			Unjudged: f.chunkUnjudged, Batches: 2, Failed: 1, Err: errors.New("jev down"),
+		}
 	}
 	return out, jev.Usage{}, nil
 }
@@ -980,8 +993,8 @@ func TestSearchFilterChunks(t *testing.T) {
 	}
 	for _, chunks := range h.qual.gotChunks {
 		for _, c := range chunks {
-			if len([]rune(c)) > scrape.DefaultChunkChars {
-				t.Errorf("chunk of %d runes exceeds %d", len([]rune(c)), scrape.DefaultChunkChars)
+			if len([]rune(c.Text)) > scrape.DefaultChunkChars {
+				t.Errorf("chunk of %d runes exceeds %d", len([]rune(c.Text)), scrape.DefaultChunkChars)
 			}
 		}
 	}
@@ -1267,5 +1280,108 @@ func TestSearchGoalReachesJudges(t *testing.T) {
 	_, _, err = h.run("giants score", "--urls-only")
 	if err != nil || h.qual.gotGoal != "" || h.qual.gotQuery != "giants score" {
 		t.Errorf("bare form: %v query %q goal %q", err, h.qual.gotQuery, h.qual.gotGoal)
+	}
+}
+
+// A page whose batches partly failed keeps the chunks Jev never ruled on and
+// still drops the ones it rejected, rather than falling back to the whole page.
+func TestSearchFilterChunksPartialFailureKeepsUnjudged(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.relevantWord = "attention"
+	h.qual.chunkUnjudged = []int{0}
+	h.prov.results = []provider.SearchResult{paper}
+	h.withScraper(map[string]string{paper.URL: bigPage}, nil)
+
+	out, errOut, err := h.run("--scrape", "--filter-chunks", "--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 1 {
+		t.Fatalf("items = %+v", items)
+	}
+	got := items[0]
+	// chunkA unjudged (kept), chunkB rejected (dropped), chunkC relevant (kept).
+	if got.Content != chunkA+"\n\n"+chunkC {
+		t.Errorf("content should keep unjudged + relevant chunks only, got %d chars", len(got.Content))
+	}
+	if got.ChunksKept == nil || *got.ChunksKept != 2 {
+		t.Errorf("chunks_kept = %v, want 2", got.ChunksKept)
+	}
+	if got.ChunksUnjudged == nil || *got.ChunksUnjudged != 1 {
+		t.Errorf("chunks_unjudged = %v, want 1", got.ChunksUnjudged)
+	}
+	if !strings.Contains(got.FilterError, "unjudged") {
+		t.Errorf("filter_error = %q", got.FilterError)
+	}
+	if !strings.Contains(errOut, "partly filtered") {
+		t.Errorf("summary = %q", errOut)
+	}
+
+	out, _, err = h.run("--scrape", "--filter-chunks", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "chunk filter partly failed") || !strings.Contains(out, "1 unjudged") {
+		t.Errorf("pretty output:\n%s", out)
+	}
+}
+
+// The judge sees each chunk with the tail of the previous one as context;
+// the kept text is the bare chunk. --chunk-chars changes the chunk size.
+func TestSearchFilterChunksOverlapAndChunkChars(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.relevantWord = "attention"
+	h.prov.results = []provider.SearchResult{paper}
+	h.withScraper(map[string]string{paper.URL: bigPage}, nil)
+
+	out, _, err := h.run("--scrape", "--filter-chunks", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.qual.gotChunks) != 1 || len(h.qual.gotChunks[0]) != 3 {
+		t.Fatalf("judged chunks = %v", h.qual.gotChunks)
+	}
+	judged := h.qual.gotChunks[0]
+	if judged[0].Before != "" || judged[0].Text != chunkA {
+		t.Errorf("first chunk should have no context")
+	}
+	if judged[1].Text != chunkB || !strings.HasPrefix(judged[1].Before, "Attention lets") || !strings.HasSuffix(chunkA, judged[1].Before) {
+		t.Errorf("second chunk should carry a sentence-aligned tail of chunkA as context: %q", judged[1].Before)
+	}
+	want := scrape.Overlap(scrape.DefaultChunkChars)
+	if n := len([]rune(judged[1].Before)); n > want || n < want/2 {
+		t.Errorf("context = %d runes, want about %d", n, want)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 1 || items[0].Content != chunkA+"\n\n"+chunkC {
+		t.Errorf("kept content must be the bare chunks: %q", items[0].Content)
+	}
+
+	// Smaller chunks: more of them, context scaled down, still bare on output.
+	h = newHarness(t, allKeys())
+	h.qual.relevantWord = "attention"
+	h.prov.results = []provider.SearchResult{paper}
+	h.withScraper(map[string]string{paper.URL: bigPage}, nil)
+	out, _, err = h.run("--scrape", "--filter-chunks", "--chunk-chars", "500", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	judged = h.qual.gotChunks[0]
+	if len(judged) < 8 {
+		t.Errorf("500-char chunks of a %d-char page: got %d chunks", len(bigPage), len(judged))
+	}
+	for i, c := range judged {
+		if n := len([]rune(c.Before)); n > scrape.Overlap(500) || (i > 0 && n == 0) {
+			t.Errorf("chunk %d context = %d runes, want 1..%d", i, n, scrape.Overlap(500))
+		}
+	}
+	items = mustJSON[[]outputResult](t, out)
+	if items[0].ChunksTotal == nil || *items[0].ChunksTotal < 8 || strings.Contains(items[0].Content, "cookies") {
+		t.Errorf("chunks_total = %v, newsletter text leaked: %v", items[0].ChunksTotal, strings.Contains(items[0].Content, "cookies"))
+	}
+
+	if _, _, err := h.run("--scrape", "--filter-chunks", "--chunk-chars", "0", "q"); err == nil || !strings.Contains(err.Error(), "--chunk-chars") {
+		t.Errorf("zero chunk size should be rejected: %v", err)
 	}
 }

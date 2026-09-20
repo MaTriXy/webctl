@@ -17,7 +17,9 @@ boilerplate, cookie or subscription notices, advertisements, author bios,
 lists of links or related articles, generic background the reader already
 knows, restated context without new information, and passages about a
 different topic. When in doubt, answer no: the reader can open the page.
-Judge only this one chunk.
+Judge only this one chunk. When preceding text is shown, it is the end of
+the previous chunk, given only so you know what this chunk follows; it is
+not part of the chunk and must not count toward the answer.
 
 The goal, when given, is what the user actually needs; keep a chunk if it
 helps toward the goal.
@@ -25,6 +27,12 @@ helps toward the goal.
 Query: {{.Query}}
 {{- if .Goal}}
 Goal: {{.Goal}}
+{{- end}}
+
+{{- if .Before}}
+
+Preceding text (context only, not part of the chunk):
+{{.Before}}
 {{- end}}
 
 Chunk {{.ID}}:
