@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/smart_search/internal/config"
-	"github.com/dorkitude/smart_search/internal/jev"
-	"github.com/dorkitude/smart_search/internal/keys"
-	"github.com/dorkitude/smart_search/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/config"
+	"github.com/dorkitude/multi_search_web/internal/jev"
+	"github.com/dorkitude/multi_search_web/internal/keys"
+	"github.com/dorkitude/multi_search_web/internal/provider"
 )
 
 const validateTimeout = 20 * time.Second
@@ -60,7 +60,7 @@ func validateJevKey(ctx context.Context, cfg *config.Config, key string) error {
 	return nil
 }
 
-// newKeysCmd builds the `smart_search keys` command group.
+// newKeysCmd builds the `multi_search_web keys` command group.
 func newKeysCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "keys",

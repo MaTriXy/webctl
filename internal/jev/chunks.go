@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/dorkitude/smart_search/internal/prompts"
+	"github.com/dorkitude/multi_search_web/internal/prompts"
 )
 
 // ChunkKey returns the question key used for the i-th chunk in FilterChunks.

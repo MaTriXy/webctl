@@ -55,7 +55,7 @@ func callMCPToolWithHeaders(ctx context.Context, client *http.Client, providerNa
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("User-Agent", "smart_search/1.0 (+https://github.com/dorkitude/smart_search)")
+	req.Header.Set("User-Agent", "multi_search_web/1.0 (+https://github.com/dorkitude/multi_search_web)")
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

@@ -1,6 +1,6 @@
 # Eval report: filter vs. no-filter
 
-smart_search 0.0.013, 2026-09-20. Every number here is in `evals/results.db`; regenerate the tables with `smart_search eval report --compare`.
+multi_search_web 0.0.013, 2026-09-20. Every number here is in `evals/results.db`; regenerate the tables with `multi_search_web eval report --compare`.
 
 ## Summary
 
@@ -154,9 +154,9 @@ The same sweep on v4-rubric You.com inputs (run 10) kept junk at 0/16 from 1.7 t
 ## Reproduce
 
 ```bash
-go build -o smart_search ./cmd/smart_search
+go build -o multi_search_web ./cmd/multi_search_web
 docker run -d --name searxng -p 8899:8080 -v "$PWD/docs/searxng/settings.yml:/etc/searxng/settings.yml:ro" searxng/searxng:latest
-SEARXNG_URL=http://localhost:8899 SMART_SEARCH_PROVIDER=searxng ./smart_search eval --fresh
-./smart_search eval report --compare          # tables per version, latest run each
-./smart_search eval --verbose reddit-quiet-switches   # every judged score, keep/drop
+SEARXNG_URL=http://localhost:8899 MULTI_SEARCH_WEB_PROVIDER=searxng ./multi_search_web eval --fresh
+./multi_search_web eval report --compare          # tables per version, latest run each
+./multi_search_web eval --verbose reddit-quiet-switches   # every judged score, keep/drop
 ```

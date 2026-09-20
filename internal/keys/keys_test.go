@@ -45,7 +45,7 @@ func TestDefaultPaths(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir, err := DefaultDir()
-	if err != nil || dir != filepath.Join(home, "smart_search") {
+	if err != nil || dir != filepath.Join(home, "multi_search_web") {
 		t.Errorf("DefaultDir = %q, %v", dir, err)
 	}
 	p, err := DefaultPath()
@@ -70,7 +70,7 @@ func TestLoadBadJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := Load(path)
-	if err == nil || !strings.Contains(err.Error(), "parse") || !strings.Contains(err.Error(), "smart_search setup") {
+	if err == nil || !strings.Contains(err.Error(), "parse") || !strings.Contains(err.Error(), "multi_search_web setup") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -90,7 +90,7 @@ func TestLoadPartialFile(t *testing.T) {
 }
 
 func TestSaveRoundTrip(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "nested", "smart_search")
+	dir := filepath.Join(t.TempDir(), "nested", "multi_search_web")
 	path := filepath.Join(dir, "keys.json")
 
 	s := &Store{}

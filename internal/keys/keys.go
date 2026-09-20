@@ -110,13 +110,13 @@ type Store struct {
 	JevAPIKey      string `json:"jev_api_key"`
 }
 
-// DefaultDir returns ~/smart_search, the config directory.
+// DefaultDir returns ~/multi_search_web, the config directory.
 func DefaultDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(home, "smart_search"), nil
+	return filepath.Join(home, "multi_search_web"), nil
 }
 
 // DefaultPath returns ~/secrets/keys.json. The file may be shared with other
@@ -140,7 +140,7 @@ func Load(path string) (*Store, error) {
 	}
 	var s Store
 	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, fmt.Errorf("parse %s: %w (fix the JSON or delete the file and re-run `smart_search setup`)", path, err)
+		return nil, fmt.Errorf("parse %s: %w (fix the JSON or delete the file and re-run `multi_search_web setup`)", path, err)
 	}
 	return &s, nil
 }

@@ -53,7 +53,7 @@ func (e *APIError) Error() string {
 	}
 	switch e.Status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		msg += " (check JEV_API_KEY or run `smart_search setup`)"
+		msg += " (check JEV_API_KEY or run `multi_search_web setup`)"
 	case http.StatusTooManyRequests:
 		msg += " (rate limited)"
 	}
@@ -158,7 +158,7 @@ func (c *Client) once(ctx context.Context, payload []byte) (*SystemOneResponse, 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
-	httpReq.Header.Set("User-Agent", "smart_search/1.0 (+https://github.com/dorkitude/smart_search)")
+	httpReq.Header.Set("User-Agent", "multi_search_web/1.0 (+https://github.com/dorkitude/multi_search_web)")
 
 	resp, err := c.httpClient().Do(httpReq)
 	if err != nil {

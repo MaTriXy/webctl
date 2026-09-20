@@ -1,4 +1,4 @@
-module github.com/dorkitude/smart_search
+module github.com/dorkitude/multi_search_web
 
 go 1.26.0
 

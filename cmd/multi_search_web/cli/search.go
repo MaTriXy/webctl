@@ -15,10 +15,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/smart_search/internal/config"
-	"github.com/dorkitude/smart_search/internal/jev"
-	"github.com/dorkitude/smart_search/internal/provider"
-	"github.com/dorkitude/smart_search/internal/scrape"
+	"github.com/dorkitude/multi_search_web/internal/config"
+	"github.com/dorkitude/multi_search_web/internal/jev"
+	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/scrape"
 )
 
 // searchFlags holds the flag values for the search (root) command.

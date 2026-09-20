@@ -55,7 +55,7 @@ func (s *SearXNG) Search(ctx context.Context, query string, numResults int) ([]S
 		return nil, fmt.Errorf("SearXNG: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "smart_search/1.0 (+https://github.com/dorkitude/smart_search)")
+	req.Header.Set("User-Agent", "multi_search_web/1.0 (+https://github.com/dorkitude/multi_search_web)")
 
 	resp, err := s.client.Do(req)
 	if err != nil {

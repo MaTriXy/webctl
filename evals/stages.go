@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dorkitude/smart_search/internal/jev"
-	"github.com/dorkitude/smart_search/internal/prompts"
-	"github.com/dorkitude/smart_search/internal/provider"
-	"github.com/dorkitude/smart_search/internal/scrape"
+	"github.com/dorkitude/multi_search_web/internal/jev"
+	"github.com/dorkitude/multi_search_web/internal/prompts"
+	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/scrape"
 )
 
 // Scraper is the slice of *scrape.Fetcher the scrape stage needs.

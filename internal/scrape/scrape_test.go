@@ -44,7 +44,7 @@ func TestHTMLToText(t *testing.T) {
 
 func TestFetchHTMLAndTruncate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("User-Agent"), "smart_search") {
+		if !strings.Contains(r.Header.Get("User-Agent"), "multi_search_web") {
 			t.Errorf("User-Agent = %q", r.Header.Get("User-Agent"))
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

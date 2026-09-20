@@ -295,7 +295,7 @@ func TestPostJSONUsesCustomClient(t *testing.T) {
 	if !called {
 		t.Error("custom HTTPClient was not used")
 	}
-	if ua := c.Headers.Get("User-Agent"); !strings.HasPrefix(ua, "smart_search/") {
+	if ua := c.Headers.Get("User-Agent"); !strings.HasPrefix(ua, "multi_search_web/") {
 		t.Errorf("User-Agent = %q", ua)
 	}
 }

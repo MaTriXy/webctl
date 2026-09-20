@@ -1,4 +1,4 @@
-// Package cli wires up the smart_search cobra commands.
+// Package cli wires up the multi_search_web cobra commands.
 package cli
 
 import (
@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/dorkitude/smart_search/internal/config"
-	version_ "github.com/dorkitude/smart_search/internal/version"
+	"github.com/dorkitude/multi_search_web/internal/config"
+	version_ "github.com/dorkitude/multi_search_web/internal/version"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 	// otherwise the behavior version is reported.
 	version = version_.Version
 
-	// configDir overrides ~/smart_search when set via --config-dir.
+	// configDir overrides ~/multi_search_web when set via --config-dir.
 	configDir string
 	// keysFile overrides ~/secrets/keys.json when set via --keys-file.
 	keysFile string
@@ -28,9 +28,9 @@ var (
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "smart_search [flags] <query>",
+		Use:   "multi_search_web [flags] <query>",
 		Short: "Web search qualified by Jev's typed relevance scoring",
-		Long: `smart_search queries a web search backend (Exa, Parallel, Sonar, DuckDuckGo,
+		Long: `multi_search_web queries a web search backend (Exa, Parallel, Sonar, DuckDuckGo,
 or a self-hosted SearXNG) and passes each result through Jev — TypeSafe's
 System One model — for typed, probabilistic relevance qualification.
 Low-scoring results are dropped so you spend fewer context tokens downstream.
@@ -40,8 +40,8 @@ Add --scrape to fetch page text, and --filter-chunks to keep only the
 relevant parts.
 
 Get started:
-  smart_search setup
-  smart_search "latest advances in mechanistic interpretability"`,
+  multi_search_web setup
+  multi_search_web "latest advances in mechanistic interpretability"`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -53,7 +53,7 @@ Get started:
 			return runSearch(cmd, args)
 		},
 	}
-	root.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default ~/smart_search)")
+	root.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default ~/multi_search_web)")
 	root.PersistentFlags().StringVar(&keysFile, "keys-file", "", "API keys file (default ~/secrets/keys.json)")
 
 	addSearchFlags(root)

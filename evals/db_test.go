@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dorkitude/smart_search/internal/jev"
-	"github.com/dorkitude/smart_search/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/jev"
+	"github.com/dorkitude/multi_search_web/internal/provider"
 )
 
 func TestDBRoundTrip(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dorkitude/smart_search/internal/keys"
+	"github.com/dorkitude/multi_search_web/internal/keys"
 )
 
 // clearEnv unsets every env var that could leak into a Load call.
@@ -59,7 +59,7 @@ func TestLoadDefaultDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Dir != filepath.Join(home, "smart_search") || cfg.KeysPath != filepath.Join(home, "secrets", "keys.json") {
+	if cfg.Dir != filepath.Join(home, "multi_search_web") || cfg.KeysPath != filepath.Join(home, "secrets", "keys.json") {
 		t.Errorf("paths = %q %q", cfg.Dir, cfg.KeysPath)
 	}
 }
@@ -131,9 +131,9 @@ func TestLoadEnvOverridesConfigYAML(t *testing.T) {
 	clearEnv(t)
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "config.yaml"), "provider: exa\nnum: 5\n")
-	t.Setenv("SMART_SEARCH_PROVIDER", "parallel")
-	t.Setenv("SMART_SEARCH_NUM", "7")
-	t.Setenv("SMART_SEARCH_JEV_MODEL", "jev-env")
+	t.Setenv("MULTI_SEARCH_WEB_PROVIDER", "parallel")
+	t.Setenv("MULTI_SEARCH_WEB_NUM", "7")
+	t.Setenv("MULTI_SEARCH_WEB_JEV_MODEL", "jev-env")
 	cfg, err := Load(Options{Dir: dir, KeysPath: filepath.Join(dir, "keys.json")})
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-// Package prompts embeds the OKF-style prompt templates shipped with smart_search.
+// Package prompts embeds the OKF-style prompt templates shipped with multi_search_web.
 //
 // Each .md file has a YAML frontmatter block (name, description, type, model,
 // criteria, ...) followed by a Go text/template body that becomes the

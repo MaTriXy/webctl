@@ -1,4 +1,4 @@
-# smart_search evals
+# multi_search_web evals
 
 End-to-end checks of search quality. Each case runs one real provider search
 (the auto chain by default) and then up to three stages on the same results:
@@ -20,18 +20,18 @@ These hit live APIs and cost money. They are not run by `go test`.
 
 ## Running
 
-You need a Jev key (`smart_search setup`). Search keys are optional: the
+You need a Jev key (`multi_search_web setup`). Search keys are optional: the
 keyless Exa and Parallel endpoints are used without them.
 
 ```bash
-go build -o smart_search ./cmd/smart_search
+go build -o multi_search_web ./cmd/multi_search_web
 
-./smart_search eval                       # every case, all stages, 2 in parallel
-./smart_search eval --modes filter        # one stage only
-./smart_search eval -p parallel           # pin one provider
-./smart_search eval --verbose reddit-espresso-grinder github-uv
-./smart_search eval --json | jq '.summary'
-./smart_search eval --cases ./my-cases
+./multi_search_web eval                       # every case, all stages, 2 in parallel
+./multi_search_web eval --modes filter        # one stage only
+./multi_search_web eval -p parallel           # pin one provider
+./multi_search_web eval --verbose reddit-espresso-grinder github-uv
+./multi_search_web eval --json | jq '.summary'
+./multi_search_web eval --cases ./my-cases
 ```
 
 The command exits non-zero if any case fails or errors.
@@ -44,14 +44,14 @@ keyless search tiers, which throttle after a few dozen calls). Pass
 ## Results database
 
 Every run is stored in `evals/results.db` (SQLite; `--db` changes the path,
-`--db ""` skips it). Rows carry the smart_search behavior version from
+`--db ""` skips it). Rows carry the multi_search_web behavior version from
 `internal/version`, so runs of different versions never mix. Bump that
 version whenever search, filtering, or scraping behavior changes.
 
 ```bash
-./smart_search eval report                   # per-version, per-mode table (Markdown)
-./smart_search eval report --cases           # plus one row per case and stage
-./smart_search eval report --version 0.0.004
+./multi_search_web eval report                   # per-version, per-mode table (Markdown)
+./multi_search_web eval report --cases           # plus one row per case and stage
+./multi_search_web eval report --version 0.0.004
 sqlite3 evals/results.db 'SELECT version, mode, SUM(chars) FROM results GROUP BY 1, 2'
 ```
 

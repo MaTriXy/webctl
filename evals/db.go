@@ -10,10 +10,10 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/dorkitude/smart_search/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/provider"
 )
 
-// DB stores eval runs in SQLite. Every row carries the smart_search
+// DB stores eval runs in SQLite. Every row carries the multi_search_web
 // behavior version so results from different versions never mix.
 type DB struct {
 	sql *sql.DB

@@ -9,12 +9,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/smart_search/evals"
-	"github.com/dorkitude/smart_search/internal/config"
-	"github.com/dorkitude/smart_search/internal/jev"
-	"github.com/dorkitude/smart_search/internal/provider"
-	"github.com/dorkitude/smart_search/internal/scrape"
-	version_ "github.com/dorkitude/smart_search/internal/version"
+	"github.com/dorkitude/multi_search_web/evals"
+	"github.com/dorkitude/multi_search_web/internal/config"
+	"github.com/dorkitude/multi_search_web/internal/jev"
+	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/scrape"
+	version_ "github.com/dorkitude/multi_search_web/internal/version"
 )
 
 // newEvalJev builds the Jev client for evals. Tests override it.
@@ -55,7 +55,7 @@ func newEvalCmd() *cobra.Command {
 Each stage records what it would deliver (results, characters, junk-domain
 hits) and asks Jev in one batch request whether that delivery covers the
 case's expected themes. A case passes when its filter stage passes. Every
-stage is stored in a SQLite database tagged with the smart_search version.
+stage is stored in a SQLite database tagged with the multi_search_web version.
 Provider results are cached in that database for 24h so repeated runs
 judge identical inputs; --fresh searches again.
 
@@ -139,7 +139,7 @@ Cases are YAML files embedded from evals/cases/, or a directory given with
 			}
 
 			if !jsonOut {
-				fmt.Fprintf(out, "=== smart_search %s eval: %d case(s), provider %s, modes %s, parallel %d ===\n\n", version_.Version, len(cases), defaultProvider, modesFlag, parallel)
+				fmt.Fprintf(out, "=== multi_search_web %s eval: %d case(s), provider %s, modes %s, parallel %d ===\n\n", version_.Version, len(cases), defaultProvider, modesFlag, parallel)
 			}
 			progress := func(r *evals.Report) {
 				if !jsonOut {

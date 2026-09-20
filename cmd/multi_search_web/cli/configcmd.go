@@ -12,9 +12,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/dorkitude/smart_search/internal/config"
-	"github.com/dorkitude/smart_search/internal/keys"
-	"github.com/dorkitude/smart_search/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/config"
+	"github.com/dorkitude/multi_search_web/internal/keys"
+	"github.com/dorkitude/multi_search_web/internal/provider"
 )
 
 // setting describes one key of config.yaml.
@@ -25,7 +25,7 @@ type setting struct {
 }
 
 // settings lists what `config set` accepts. Keys stay in a separate file
-// (`smart_search keys`); this is everything else.
+// (`multi_search_web keys`); this is everything else.
 var settings = []setting{
 	{"provider", "default search provider (empty = auto chain)", func(v string) (any, error) {
 		v = provider.Normalize(v)
@@ -80,7 +80,7 @@ func findSetting(key string) (setting, error) {
 	return setting{}, fmt.Errorf("unknown setting %q (expected one of %s)", key, strings.Join(names, ", "))
 }
 
-// configPath is ~/smart_search/config.yaml, or --config-dir's.
+// configPath is ~/multi_search_web/config.yaml, or --config-dir's.
 func configPath() (string, error) {
 	dir := configDir
 	if dir == "" {
@@ -203,9 +203,9 @@ func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show or change settings in config.yaml (provider, num, min_score, jev.*, searxng_url, keys_file)",
-		Long: `Reads and writes ~/smart_search/config.yaml. Settings resolve in this order:
-command-line flags, SMART_SEARCH_* environment variables, config.yaml, then
-built-in defaults. API keys live in the keys file instead; see "smart_search keys".`,
+		Long: `Reads and writes ~/multi_search_web/config.yaml. Settings resolve in this order:
+command-line flags, MULTI_SEARCH_WEB_* environment variables, config.yaml, then
+built-in defaults. API keys live in the keys file instead; see "multi_search_web keys".`,
 	}
 
 	show := &cobra.Command{

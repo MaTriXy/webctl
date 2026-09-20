@@ -1,10 +1,10 @@
-// Package config resolves runtime configuration for smart_search.
+// Package config resolves runtime configuration for multi_search_web.
 //
 // Precedence (highest first):
 //  1. command-line flags (bound by the CLI layer)
-//  2. environment variables (EXA_API_KEY, JEV_API_KEY, SEARXNG_URL, SMART_SEARCH_PROVIDER, ...)
-//  3. ~/smart_search/config.yaml (optional)
-//  4. ~/secrets/keys.json (for API keys only; --keys-file, SMART_SEARCH_KEYS_FILE,
+//  2. environment variables (EXA_API_KEY, JEV_API_KEY, SEARXNG_URL, MULTI_SEARCH_WEB_PROVIDER, ...)
+//  3. ~/multi_search_web/config.yaml (optional)
+//  4. ~/secrets/keys.json (for API keys only; --keys-file, MULTI_SEARCH_WEB_KEYS_FILE,
 //     or keys_file in config.yaml point elsewhere)
 //  5. built-in defaults
 package config
@@ -18,8 +18,8 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/dorkitude/smart_search/internal/keys"
-	"github.com/dorkitude/smart_search/internal/provider"
+	"github.com/dorkitude/multi_search_web/internal/keys"
+	"github.com/dorkitude/multi_search_web/internal/provider"
 )
 
 // Defaults.
@@ -29,12 +29,12 @@ const (
 	DefaultMinScore = 1.8
 	DefaultJevURL   = "https://api.typesafe.ai"
 	DefaultJevModel = "jev-latest"
-	EnvPrefix       = "SMART_SEARCH"
+	EnvPrefix       = "MULTI_SEARCH_WEB"
 )
 
 // Config is the fully-resolved configuration.
 type Config struct {
-	// Dir is the smart_search home directory (~/smart_search).
+	// Dir is the multi_search_web home directory (~/multi_search_web).
 	Dir string
 	// KeysPath is the path to keys.json.
 	KeysPath string
@@ -58,7 +58,7 @@ type Config struct {
 
 // Options tweak how Load behaves. Zero value uses defaults.
 type Options struct {
-	// Dir overrides ~/smart_search. Mostly for tests.
+	// Dir overrides ~/multi_search_web. Mostly for tests.
 	Dir string
 	// KeysPath overrides the keys file (default ~/secrets/keys.json).
 	KeysPath string
@@ -66,7 +66,7 @@ type Options struct {
 	Viper *viper.Viper
 }
 
-// New returns a Viper instance pre-wired with smart_search defaults and env bindings.
+// New returns a Viper instance pre-wired with multi_search_web defaults and env bindings.
 func New() *viper.Viper {
 	v := viper.New()
 	v.SetDefault("provider", DefaultProvider)
@@ -76,7 +76,7 @@ func New() *viper.Viper {
 	v.SetDefault("jev.model", DefaultJevModel)
 	// searxng_url may also be set at the top level of config.yaml.
 	v.SetDefault("searxng_url", "")
-	// keys_file: SMART_SEARCH_KEYS_FILE or config.yaml; "" means keys.DefaultPath().
+	// keys_file: MULTI_SEARCH_WEB_KEYS_FILE or config.yaml; "" means keys.DefaultPath().
 	v.SetDefault("keys_file", "")
 
 	v.SetEnvPrefix(EnvPrefix)
@@ -191,9 +191,9 @@ func (c *Config) ProviderKey(name string) (string, error) {
 			return "", nil
 		}
 		if n == keys.SearXNG {
-			return "", fmt.Errorf("no SearXNG URL configured: run `smart_search setup` or set %s", n.EnvVar())
+			return "", fmt.Errorf("no SearXNG URL configured: run `multi_search_web setup` or set %s", n.EnvVar())
 		}
-		return "", fmt.Errorf("no %s API key configured: run `smart_search setup` or set %s", n.Display(), n.EnvVar())
+		return "", fmt.Errorf("no %s API key configured: run `multi_search_web setup` or set %s", n.Display(), n.EnvVar())
 	}
 	return key, nil
 }
@@ -209,7 +209,7 @@ func (c *Config) Usable(name string) bool {
 func (c *Config) JevKey() (string, error) {
 	key := c.Keys.Get(keys.Jev)
 	if key == "" {
-		return "", fmt.Errorf("no Jev API key configured: run `smart_search setup`, set %s, or pass --no-filter to skip qualification", keys.Jev.EnvVar())
+		return "", fmt.Errorf("no Jev API key configured: run `multi_search_web setup`, set %s, or pass --no-filter to skip qualification", keys.Jev.EnvVar())
 	}
 	return key, nil
 }
