@@ -41,6 +41,7 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 | `--scrape` | fetch each kept result's page text; prefer this over fetching pages yourself |
 | `--filter-chunks` | with `--scrape`, return only the chunks Jev judges relevant to the goal |
 | `--max-chars N` | with `--scrape`, cap text per page (default 50000) |
+| `--chunk-chars N` | with `--filter-chunks`, chunk size in characters (default 2000); each chunk is judged with 20% overlap from the previous one |
 | `--json` | JSON array on stdout; diagnostics stay on stderr |
 | `--urls-only` | one URL per line |
 | `-v, --verbose` | show scores, probabilities, dropped results, and every cooldown notice |

@@ -56,6 +56,7 @@ type Data struct {
 	Question string // for noul prompts
 	Theme    string // for eval coverage prompts
 	Chunk    string // for page chunk prompts
+	Before   string // text preceding the chunk, for orientation only
 	ID       string // for batch prompts
 	Index    int    // zero-based position in a batch
 }

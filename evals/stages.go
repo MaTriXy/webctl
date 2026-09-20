@@ -24,7 +24,7 @@ type Scraper interface {
 
 // chunkFilterer is implemented by *jev.Client; the scrape stage needs it.
 type chunkFilterer interface {
-	FilterChunks(ctx context.Context, ask jev.Ask, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
+	FilterChunks(ctx context.Context, ask jev.Ask, chunks []jev.Chunk) ([]*jev.NoulAnswer, jev.Usage, error)
 }
 
 // dupConfirmer is implemented by *jev.Client; the filter stage folds
@@ -390,7 +390,12 @@ func (r *Runner) stageScrape(ctx context.Context, c Case, kept []KeptResult, fla
 			defer wg.Done()
 			defer func() { <-sem }()
 			chunks := scrape.Split(text, scrape.DefaultChunkChars)
-			answers, usage, err := cf.FilterChunks(ctx, r.caseAsk(c), chunks)
+			tails := scrape.OverlapTails(chunks, scrape.Overlap(scrape.DefaultChunkChars))
+			judged := make([]jev.Chunk, len(chunks))
+			for j := range chunks {
+				judged[j] = jev.Chunk{Text: chunks[j], Before: tails[j]}
+			}
+			answers, usage, err := cf.FilterChunks(ctx, r.caseAsk(c), judged)
 			o := outcome{total: len(chunks), usage: usage, err: err}
 			if err != nil {
 				o.text = text

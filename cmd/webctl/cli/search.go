@@ -41,6 +41,7 @@ type searchFlags struct {
 	random     bool
 	sources    int
 	scrape     bool
+	chunkChars int
 	maxChars   int
 	chunks     bool
 	noDedupe   bool
@@ -66,6 +67,7 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.scrape, "scrape", false, "fetch each kept result's page text (prefer with --filter-chunks over reading pages yourself)")
 	f.BoolVar(&sf.chunks, "filter-chunks", false, "with --scrape, return only the chunks Jev finds relevant to the goal")
 	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap text per page")
+	f.IntVar(&sf.chunkChars, "chunk-chars", scrape.DefaultChunkChars, "with --filter-chunks, chunk size in characters; judged with 20% overlap")
 	f.BoolVar(&sf.jsonOut, "json", false, "JSON output")
 	f.BoolVar(&sf.urlsOnly, "urls-only", false, "one URL per line")
 	f.BoolVarP(&sf.verbose, "verbose", "v", false, "show scores, dropped results, every cooldown notice")
@@ -75,7 +77,7 @@ func addSearchFlags(cmd *cobra.Command) {
 // It exists so tests can substitute a fake without an HTTP server.
 type qualifier interface {
 	Qualify(ctx context.Context, ask jev.Ask, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
-	FilterChunks(ctx context.Context, ask jev.Ask, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
+	FilterChunks(ctx context.Context, ask jev.Ask, chunks []jev.Chunk) ([]*jev.NoulAnswer, jev.Usage, error)
 	ConfirmDuplicates(ctx context.Context, ask jev.Ask, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error)
 }
 
@@ -206,7 +208,10 @@ type searchOptions struct {
 	Scrape   bool
 	MaxChars int
 	// FilterChunks keeps only the scraped chunks Jev judges relevant.
+	// ChunkChars is the chunk size; each chunk is judged with the tail of
+	// the previous one prepended (scrape.OverlapFraction).
 	FilterChunks bool
+	ChunkChars   int
 	// NoDedupe skips the Jev duplicate pass.
 	NoDedupe bool
 }
@@ -267,6 +272,9 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	if f.chunks && !f.scrape {
 		return searchOptions{}, errors.New("--filter-chunks requires --scrape")
 	}
+	if f.chunkChars <= 0 {
+		return searchOptions{}, fmt.Errorf("--chunk-chars must be positive, got %d", f.chunkChars)
+	}
 
 	opts := searchOptions{
 		Query:        query,
@@ -280,6 +288,7 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		Scrape:       f.scrape,
 		MaxChars:     f.maxChars,
 		FilterChunks: f.chunks,
+		ChunkChars:   f.chunkChars,
 		NoDedupe:     f.noDedupe,
 	}
 	if f.num > 0 {
@@ -529,7 +538,7 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 		go func(pc *pageContent) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			filterChunks(ctx, q, opts.ask(), pc)
+			filterChunks(ctx, q, opts.ask(), pc, opts.ChunkChars)
 		}(&out[i])
 	}
 	wg.Wait()
@@ -541,11 +550,13 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 // some batches failed, the chunks they covered are kept unfiltered and the
 // rest are still filtered normally; only a total failure falls back to the
 // whole unfiltered page.
-func filterChunks(ctx context.Context, q qualifier, ask jev.Ask, pc *pageContent) {
-	chunks := scrape.Split(pc.Content, scrape.DefaultChunkChars)
+func filterChunks(ctx context.Context, q qualifier, ask jev.Ask, pc *pageContent, chunkChars int) {
+	chunks := scrape.Split(pc.Content, chunkChars)
 	pc.Filtered = true
 	pc.ChunksTotal = len(chunks)
-	answers, _, err := q.FilterChunks(ctx, ask, chunks)
+	// Judge each chunk with the tail of the previous one as context; the
+	// kept text is the bare chunk.
+	answers, _, err := q.FilterChunks(ctx, ask, withContext(chunks, chunkChars))
 
 	var partial *jev.PartialFilterError
 	if err != nil {
@@ -575,6 +586,16 @@ func filterChunks(ctx context.Context, q qualifier, ask jev.Ask, pc *pageContent
 	}
 	pc.ChunksKept = len(kept)
 	pc.Content = scrape.Join(kept)
+}
+
+// withContext pairs each chunk with the overlap tail of the one before it.
+func withContext(chunks []string, chunkChars int) []jev.Chunk {
+	tails := scrape.OverlapTails(chunks, scrape.Overlap(chunkChars))
+	out := make([]jev.Chunk, len(chunks))
+	for i, c := range chunks {
+		out[i] = jev.Chunk{Text: c, Before: tails[i]}
+	}
+	return out
 }
 
 // partialUnjudged returns the unjudged chunk indices, or nil when there was

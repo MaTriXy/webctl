@@ -40,9 +40,18 @@ const (
 // ChunkKey returns the question key used for the i-th chunk in FilterChunks.
 func ChunkKey(i int) string { return "chunk_" + strconv.Itoa(i) }
 
+// Chunk is one piece of a page to judge. Before is optional preceding text
+// (the tail of the previous chunk) shown to the judge for orientation only;
+// it is not part of the chunk and is not returned with it.
+type Chunk struct {
+	Text   string
+	Before string
+}
+
 type chunkItem struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID     string `json:"id"`
+	Before string `json:"before,omitempty"`
+	Text   string `json:"text"`
 }
 
 type chunkState struct {
@@ -98,12 +107,13 @@ type chunkBatch struct{ lo, hi int } // chunks[lo:hi]
 // planChunkBatches packs chunks into batches that each stay under the token
 // budget. perChunkOverhead is the estimated fixed cost of one rendered
 // question; every batch holds at least one chunk, however large it is.
-func planChunkBatches(chunks []string, perChunkOverhead int) []chunkBatch {
+func planChunkBatches(chunks []Chunk, perChunkOverhead int) []chunkBatch {
 	var batches []chunkBatch
 	lo, used := 0, 0
-	for i, text := range chunks {
-		// The chunk text is sent twice: once in state, once in the question.
-		cost := 2*estimateTokens(text) + perChunkOverhead
+	for i, ch := range chunks {
+		// The chunk text and its context are sent twice: once in state,
+		// once in the question.
+		cost := 2*(estimateTokens(ch.Text)+estimateTokens(ch.Before)) + perChunkOverhead
 		full := i > lo && (used+cost > ChunkBatchTokenBudget || i-lo >= MaxChunksPerBatch)
 		if full {
 			batches = append(batches, chunkBatch{lo, i})
@@ -127,7 +137,7 @@ func planChunkBatches(chunks []string, perChunkOverhead int) []chunkBatch {
 // its own chunks. If some batches succeeded, the error is a
 // *PartialFilterError and the answers are still usable. The error is a plain
 // one only when every batch failed.
-func (c *Client) FilterChunks(ctx context.Context, ask Ask, chunks []string) ([]*NoulAnswer, Usage, error) {
+func (c *Client) FilterChunks(ctx context.Context, ask Ask, chunks []Chunk) ([]*NoulAnswer, Usage, error) {
 	out := make([]*NoulAnswer, len(chunks))
 	if len(chunks) == 0 {
 		return out, Usage{}, nil
@@ -142,7 +152,7 @@ func (c *Client) FilterChunks(ctx context.Context, ask Ask, chunks []string) ([]
 
 	// Render one question to measure the boilerplate, so the batch plan
 	// budgets for the real prompt rather than a guess.
-	probe, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Chunk: "", ID: ChunkKey(0), Index: 0})
+	probe, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Chunk: "", Before: " ", ID: ChunkKey(0), Index: 0})
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -200,13 +210,13 @@ const chunkEnvelopeTokens = 24
 // verdicts into out. A request rejected for size is split in half and
 // retried, down to a single chunk. On failure it returns the indices left
 // unjudged.
-func (c *Client) filterChunkRange(ctx context.Context, ask Ask, p *prompts.Prompt, chunks []string, b chunkBatch, out []*NoulAnswer) (Usage, []int, error) {
+func (c *Client) filterChunkRange(ctx context.Context, ask Ask, p *prompts.Prompt, chunks []Chunk, b chunkBatch, out []*NoulAnswer) (Usage, []int, error) {
 	state := chunkState{Ask: ask, Chunks: make([]chunkItem, 0, b.hi-b.lo)}
 	questions := make(map[string]Question, b.hi-b.lo)
 	for i := b.lo; i < b.hi; i++ {
 		id := ChunkKey(i)
-		state.Chunks = append(state.Chunks, chunkItem{ID: id, Text: chunks[i]})
-		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Chunk: chunks[i], ID: id, Index: i})
+		state.Chunks = append(state.Chunks, chunkItem{ID: id, Before: chunks[i].Before, Text: chunks[i].Text})
+		instructions, err := p.Render(prompts.Data{Query: ask.Query, Goal: ask.Goal, Chunk: chunks[i].Text, Before: chunks[i].Before, ID: id, Index: i})
 		if err != nil {
 			return Usage{}, missing(b), err
 		}
