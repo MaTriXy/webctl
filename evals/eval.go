@@ -361,6 +361,7 @@ type Stage struct {
 type Report struct {
 	Case     string        `json:"case"`
 	Query    string        `json:"query"`
+	Goal     string        `json:"goal,omitempty"`
 	Tags     []string      `json:"tags,omitempty"`
 	Version  string        `json:"version,omitempty"`
 	Provider string        `json:"provider"`
@@ -399,7 +400,7 @@ type Report struct {
 // a suite keeps going; other stages record their own Error.
 func (r *Runner) Run(ctx context.Context, c Case) *Report {
 	start := time.Now()
-	rep := &Report{Case: c.Name, Query: c.Query, Tags: c.Tags, Version: r.Version}
+	rep := &Report{Case: c.Name, Query: c.Query, Goal: c.Goal, Tags: c.Tags, Version: r.Version}
 	defer func() { rep.Duration = time.Since(start) }()
 
 	fail := func(err error) *Report {
