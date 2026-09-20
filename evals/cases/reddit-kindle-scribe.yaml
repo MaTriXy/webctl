@@ -4,6 +4,8 @@ num: 15
 tags: [reddit, opinion, noise]
 scrape: true
 expected_domains: [reddit.com]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [reviewatlas.co, coretechdaily.com, templacity.com, tabletsage.com, manifollife.com, thedetroitbureau.com]
 expected_themes:
   - handwriting or note-taking experience on the Kindle Scribe
   - comparison with alternatives such as reMarkable, Supernote, or Boox

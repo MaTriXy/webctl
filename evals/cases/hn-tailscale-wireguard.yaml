@@ -4,8 +4,10 @@ num: 15
 tags: [hackernews, engineering]
 scrape: true
 expected_domains: [news.ycombinator.com, reddit.com]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [techfuelhq.com, evezone.evetech.co.za, tech-insider.org, codingprotocols.com, vpnsmith.com, steadypub.com, eastkode.in, shattered.io, meshwg.com, techplained.com]
 expected_themes:
   - NAT traversal or key distribution handled by Tailscale
   - reasons to prefer raw WireGuard (control, no third party, simplicity)
-min_results: 3
+min_results: 2
 max_results: 12

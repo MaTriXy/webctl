@@ -4,6 +4,8 @@ num: 15
 tags: [engineering, kubernetes]
 scrape: true
 expected_domains: [github.com, stackoverflow.com, reddit.com]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [fixdevs.com, devopsbeast.com, opscanopy.com, cheveo.de]
 expected_themes:
   - page cache, tmpfs/emptyDir, or memory accounting counted by the cgroup
   - JVM/Go heap vs RSS or a child process exceeding the limit

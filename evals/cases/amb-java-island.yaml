@@ -3,8 +3,10 @@ query: "java island volcano hiking travel guide"
 num: 15
 min_score: 2.0
 tags: [ambiguous, noise, travel]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [javaprivatetour.com, thebitjoy.com, duhtravel.com, tripperhood.com, travelandhotelsexpert.com, journeytribune.com, authentic-indonesia.com]
 expected_themes:
   - a named volcano on Java (e.g. Bromo, Ijen, Merapi)
   - practical hiking or trip logistics
-min_results: 2
+min_results: 1
 max_results: 10

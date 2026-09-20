@@ -2,6 +2,8 @@ name: seo-back-pain-desk
 query: "lower back pain from sitting all day, what actually helps according to physical therapists"
 num: 20
 tags: [seo, noise, health]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [backedapp.com, health.yahoo.com]
 expected_themes:
   - specific exercises, stretches, or movement breaks
   - posture, chair, or desk setup adjustments

@@ -5,6 +5,8 @@ num: 15
 tags: [reddit, opinion, noise]
 scrape: true
 expected_domains: [reddit.com]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [nestway.ai, computerstationnation.com, quietest.org, hlplanet.com, speedale.com, keebstarter.com, green-keys.info, craftingworlds.com, clackpicks.com]
 expected_themes:
   - specific quiet switch models (e.g. silent linear/tactile switches such as Gateron Silent, Boba U4, Cherry MX Silent)
   - first-hand user experience of noise level in a shared office

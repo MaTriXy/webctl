@@ -2,6 +2,8 @@ name: tech-jwt-refresh-rotation
 query: "refresh token rotation with JWT, detecting reuse"
 num: 15
 tags: [engineering, security, noise]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [nileshblog.tech, thecodeforge.io, checkyourvibe.dev, session-management.com]
 expected_themes:
   - rotating the refresh token on every use
   - reuse detection invalidating the token family

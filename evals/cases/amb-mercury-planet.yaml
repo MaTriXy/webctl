@@ -4,6 +4,8 @@ query: "mercury planet surface temperature and orbit facts"
 num: 15
 min_score: 2.0
 tags: [ambiguous, noise]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [solarsystem.com, exorbit.space, handwiki.org]
 expected_themes:
   - surface temperature range of the planet Mercury
   - orbital period or distance from the Sun

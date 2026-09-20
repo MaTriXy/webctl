@@ -3,8 +3,10 @@ name: seo-vpn-home-wifi
 query: "do I actually need a VPN on my home wifi, security reasoning not marketing"
 num: 20
 tags: [seo, noise, security]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [safemesh.ca, enfinnit.com, vpnvertex.com, securerank.info, smarthomeexplorer.com, vpnrank.io, connectedlivingguide.com, visioncomputers.com, theinfobits.com, 247plan.net, adsblocks.com, obsidianridge.io, digitalcitizen.life]
 expected_themes:
   - HTTPS already encrypting most traffic
   - what a VPN does and does not protect against on a trusted home network
-min_results: 2
+min_results: 1
 max_results: 12

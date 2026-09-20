@@ -3,6 +3,8 @@ query: "DPO vs RLHF with PPO, when does direct preference optimization fall shor
 num: 15
 tags: [research, ml]
 scrape: true
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [mljourney.com, ai-tldr.dev, metricgate.com, theneuralbase.com, mercor.com]
 expected_themes:
   - DPO's implicit reward or lack of an explicit reward model
   - distribution shift, off-policy data, or overfitting to preference data

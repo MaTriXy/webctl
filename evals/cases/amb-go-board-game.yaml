@@ -3,6 +3,8 @@ query: "go board game opening strategy for beginners"
 num: 15
 min_score: 2.0
 tags: [ambiguous, noise]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [eathealthy365.com, magicgo.club, play-go-online.com, learn-go.net]
 expected_themes:
   - corner, side, and center opening principles or joseki
   - beginner-level guidance for the game of Go (baduk/weiqi)

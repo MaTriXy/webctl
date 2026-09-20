@@ -3,6 +3,8 @@ query: "fast Python package and project manager written in Rust"
 num: 15
 tags: [github, code]
 expected_domains: [github.com]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [calmops.com, hndistilled.com, sparkles-docs.pages.dev]
 expected_themes:
   - uv by Astral
   - replacing pip, pip-tools, virtualenv, or pyenv workflows

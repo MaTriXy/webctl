@@ -4,6 +4,8 @@ query: "moving from San Francisco to NYC in my 30s which neighborhood, honest tr
 num: 15
 tags: [reddit, opinion, noise]
 expected_domains: [reddit.com]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [crosscountrymovingcompany.net, colonialvanlines.com, moving-support.com, maybeally.com, ocity.org, wellbeingmakeover.com, miltoncoste.com, outpost.me]
 expected_themes:
   - named Manhattan or Brooklyn neighborhoods with reasons
   - tradeoffs such as rent, commute, nightlife, or space

@@ -2,6 +2,8 @@ name: seo-close-credit-card
 query: "does closing a credit card hurt your credit score"
 num: 20
 tags: [seo, noise, finance]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [investguiding.com, creditbooster.ai, creditcardchurning.net, inkl.com]
 expected_themes:
   - credit utilization ratio
   - average age of accounts or credit history length

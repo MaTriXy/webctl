@@ -276,6 +276,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 	if err != nil {
 		return err
 	}
+	results = provider.Dedupe(results)
 
 	if opts.NoFilter {
 		if len(results) == 0 && opts.Format == formatPretty {

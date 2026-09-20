@@ -3,6 +3,8 @@ query: "postgres table bloat, autovacuum tuning for high update tables"
 num: 15
 tags: [engineering, databases]
 scrape: true
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [birjob.com, how2.sh, postgresqlhtx.com, armordb.org, pgmonitoring.com, kuryzhev.cloud]
 expected_themes:
   - autovacuum settings such as scale factor or cost limit
   - dead tuples, MVCC, or pg_repack/VACUUM FULL

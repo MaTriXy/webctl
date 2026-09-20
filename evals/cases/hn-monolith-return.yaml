@@ -3,6 +3,8 @@ query: "companies that moved from microservices back to a monolith and why"
 num: 15
 tags: [hackernews, engineering, noise]
 expected_domains: [news.ycombinator.com]
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [blog.kusho.ai, byteiota.com, readcrucible.com]
 expected_themes:
   - a specific company or team that consolidated services (e.g. Amazon Prime Video, Segment)
   - operational cost or complexity as the reason

@@ -401,6 +401,7 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 	if err != nil {
 		return fail(fmt.Errorf("search: %w", err))
 	}
+	results = provider.Dedupe(results)
 	rep.TotalResults = len(results)
 
 	// One audit of the raw results labels low-value pages; every stage

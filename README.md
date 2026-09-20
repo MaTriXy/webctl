@@ -47,6 +47,8 @@ smart_search --multi "transformer circuits"  # query all, fuse with RRF, tag eng
 smart_search --random "transformer circuits" # one random backend, fall back on failure
 ```
 
+Duplicate hits (same URL, or the same title from several hosts such as an arXiv abstract, its PDF, and a proceedings mirror) are collapsed before filtering.
+
 ## Filtering
 
 ```bash

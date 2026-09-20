@@ -3,6 +3,8 @@ name: ambiguous-jaguar
 query: "jaguar big cat habitat and diet in the Amazon rainforest"
 num: 15
 min_score: 2.0
+# Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
+junk_domains: [laselvajunglelodge.com, amazonexplorer.com]
 expected_themes:
   - jaguar (Panthera onca) habitat or range in South America
   - jaguar diet or hunting behavior

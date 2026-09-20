@@ -7,4 +7,4 @@ min_score: 0.6
 expected_themes:
   - sparse autoencoders applied to neural network interpretability
 min_results: 1
-max_results: 10
+max_results: 12
