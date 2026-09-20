@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
-	"github.com/dorkitude/multi_search_web/internal/keys"
+	"github.com/dorkitude/webctl/internal/config"
+	"github.com/dorkitude/webctl/internal/keys"
 )
 
 func runConfig(t *testing.T, dir string, args ...string) (string, error) {
@@ -58,9 +58,9 @@ func TestConfigSetGetShowUnset(t *testing.T) {
 	if err != nil || strings.TrimSpace(out) != "jev-1.13.0" {
 		t.Errorf("get = %q, %v", out, err)
 	}
-	t.Setenv("MULTI_SEARCH_WEB_NUM", "7")
+	t.Setenv("WEBCTL_NUM", "7")
 	out, err = runConfig(t, dir, "config", "show")
-	if err != nil || !strings.Contains(out, "config.yaml") || !strings.Contains(out, "env MULTI_SEARCH_WEB_NUM") || !strings.Contains(out, "default") {
+	if err != nil || !strings.Contains(out, "config.yaml") || !strings.Contains(out, "env WEBCTL_NUM") || !strings.Contains(out, "default") {
 		t.Errorf("show = %q, %v", out, err)
 	}
 	if out, err := runConfig(t, dir, "config", "unset", "provider"); err != nil || !strings.Contains(out, "Removed provider") {

@@ -21,10 +21,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
-	"github.com/dorkitude/multi_search_web/internal/jev"
-	"github.com/dorkitude/multi_search_web/internal/prompts"
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/config"
+	"github.com/dorkitude/webctl/internal/jev"
+	"github.com/dorkitude/webctl/internal/prompts"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 // CasesFS holds the eval cases shipped with the binary (evals/cases/*.yaml).

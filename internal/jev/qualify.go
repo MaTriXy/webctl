@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/dorkitude/multi_search_web/internal/prompts"
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/prompts"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 // SearchResult is re-exported so callers can use jev without importing provider.

@@ -17,7 +17,7 @@ At the top of the ladder the provider stays parked; one probe request is allowed
 A skipped provider is announced on stderr once an hour per provider, every time with `--verbose`:
 
 ```
-exa skipped: cooling down until Mon 14:20 (rate limited 12m ago, strike 2 of 6); retry now with `multi_search_web cooldown clear exa`, adjust with `multi_search_web config set cooldown.steps ...`
+exa skipped: cooling down until Mon 14:20 (rate limited 12m ago, strike 2 of 6); retry now with `webctl cooldown clear exa`, adjust with `webctl config set cooldown.steps ...`
 ```
 
 If nothing is available the search fails with exit 1 and lists every provider's state. Add a key, set `searxng_url`, or wait.
@@ -25,12 +25,12 @@ If nothing is available the search fails with exit 1 and lists every provider's 
 ## Commands and settings
 
 ```
-multi_search_web cooldown                       # table: provider, strike, status, window
-multi_search_web cooldown clear [provider]      # forget one or all
-multi_search_web config set cooldown.steps 30m,2h,8h,24h,72h
-multi_search_web config set cooldown.probe_interval 12h
-multi_search_web config set cooldown.quota_start 4
-multi_search_web config set cooldown.enabled false
+webctl cooldown                       # table: provider, strike, status, window
+webctl cooldown clear [provider]      # forget one or all
+webctl config set cooldown.steps 30m,2h,8h,24h,72h
+webctl config set cooldown.probe_interval 12h
+webctl config set cooldown.quota_start 4
+webctl config set cooldown.enabled false
 ```
 
-Environment: `MULTI_SEARCH_WEB_COOLDOWN_STEPS="30m,2h,8h"`, `MULTI_SEARCH_WEB_COOLDOWN_ENABLED=false`, and so on.
+Environment: `WEBCTL_COOLDOWN_STEPS="30m,2h,8h"`, `WEBCTL_COOLDOWN_ENABLED=false`, and so on.

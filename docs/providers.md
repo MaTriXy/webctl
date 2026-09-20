@@ -40,10 +40,10 @@ Keyed use of a provider promotes it into the chain and lifts the keyless caps. S
 ## Adding a key
 
 ```
-multi_search_web keys set brave            # masked prompt
-multi_search_web keys set tavily --value tvly-...
-multi_search_web keys set searxng --value http://localhost:8899
-multi_search_web keys validate
+webctl keys set brave            # masked prompt
+webctl keys set tavily --value tvly-...
+webctl keys set searxng --value http://localhost:8899
+webctl keys validate
 ```
 
 Or the environment variable from the table, or `setup` for a guided pass over all of them.

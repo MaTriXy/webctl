@@ -25,7 +25,7 @@ const (
 	DefaultTimeout     = 10 * time.Second
 	DefaultConcurrency = 4
 	maxBodyBytes       = 8 << 20
-	userAgent          = "Mozilla/5.0 (compatible; multi_search_web/1.0; +https://github.com/dorkitude/multi_search_web)"
+	userAgent          = "Mozilla/5.0 (compatible; webctl/1.0; +https://github.com/dorkitude/webctl)"
 )
 
 // Fetcher downloads pages and extracts their text.

@@ -1,4 +1,4 @@
-// Package docs embeds the reference documentation so `multi_search_web docs`
+// Package docs embeds the reference documentation so `webctl docs`
 // can print it without a checkout.
 package docs
 

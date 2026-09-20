@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 func TestNormalizeURL(t *testing.T) {

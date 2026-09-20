@@ -42,7 +42,7 @@ type keenableResponse struct {
 // Search implements Provider. Keenable takes no result count; the limit is
 // applied locally.
 func (k *Keenable) Search(ctx context.Context, query string, numResults int) ([]SearchResult, error) {
-	path, headers := "/v1/search/public", map[string]string{"X-Keenable-Title": "multi_search_web"}
+	path, headers := "/v1/search/public", map[string]string{"X-Keenable-Title": "webctl"}
 	if k.apiKey != "" {
 		path = "/v1/search"
 		headers["X-API-Key"] = k.apiKey

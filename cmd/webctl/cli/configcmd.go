@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
-	"github.com/dorkitude/multi_search_web/internal/keys"
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/config"
+	"github.com/dorkitude/webctl/internal/keys"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 // setting describes one key of config.yaml.
@@ -26,7 +26,7 @@ type setting struct {
 }
 
 // settings lists what `config set` accepts. Keys stay in a separate file
-// (`multi_search_web keys`); this is everything else.
+// (`webctl keys`); this is everything else.
 var settings = []setting{
 	{"provider", "default search provider (empty = auto chain)", func(v string) (any, error) {
 		v = provider.Normalize(v)
@@ -119,7 +119,7 @@ func findSetting(key string) (setting, error) {
 	return setting{}, fmt.Errorf("unknown setting %q (expected one of %s)", key, strings.Join(names, ", "))
 }
 
-// configPath is ~/multi_search_web/config.yaml, or --config-dir's.
+// configPath is ~/webctl/config.yaml, or --config-dir's.
 func configPath() (string, error) {
 	dir := configDir
 	if dir == "" {
@@ -252,7 +252,7 @@ func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show, get, set, or unset settings in config.yaml",
-		Long: `Precedence: flag, MULTI_SEARCH_WEB_* env, config.yaml, default. "config list"
+		Long: `Precedence: flag, WEBCTL_* env, config.yaml, default. "config list"
 names every setting; "docs config" explains them. Keys live elsewhere: see "keys".`,
 	}
 

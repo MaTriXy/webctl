@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 func newCooldownCmd() *cobra.Command {
@@ -45,7 +45,7 @@ State: <config dir>/cooldown.json. See "docs cooldowns".`,
 				}
 				fmt.Fprintf(out, "  %-14s strike %d of %d  HTTP %d  %s\n", n, e.Strikes, len(cfg.Cooldown.Steps), e.Status, state)
 			}
-			fmt.Fprintln(out, "\nClear with `multi_search_web cooldown clear [provider]`; tune with `multi_search_web config set cooldown.<setting>`.")
+			fmt.Fprintln(out, "\nClear with `webctl cooldown clear [provider]`; tune with `webctl config set cooldown.<setting>`.")
 			return nil
 		},
 	}

@@ -160,7 +160,7 @@ func (c *Cooldown) describe(name string, e *CooldownEntry) string {
 	if e.Status == http.StatusPaymentRequired {
 		what = "quota spent"
 	}
-	return fmt.Sprintf("%s skipped: cooling down until %s (%s %s ago, strike %d of %d); retry now with `multi_search_web cooldown clear %s`, adjust with `multi_search_web config set cooldown.steps ...`",
+	return fmt.Sprintf("%s skipped: cooling down until %s (%s %s ago, strike %d of %d); retry now with `webctl cooldown clear %s`, adjust with `webctl config set cooldown.steps ...`",
 		strings.TrimSuffix(name, "+key"), e.Until.Local().Format("Mon 15:04"), what, ago, e.Strikes, len(c.Config.Steps), strings.TrimSuffix(name, "+key"))
 }
 

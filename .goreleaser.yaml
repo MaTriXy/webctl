@@ -1,0 +1,66 @@
+version: 2
+project_name: webctl
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/webctl
+    binary: webctl
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/dorkitude/webctl/cmd/webctl/cli.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+nfpms:
+  - package_name: webctl
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
+    vendor: Kyle Wild
+    homepage: https://github.com/dorkitude/webctl
+    maintainer: Kyle Wild <kyle@kylewild.com>
+    description: Smart web search CLI for agents, backed by Jev. Saves a lot of tokens.
+    license: MIT
+    formats: [deb]
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+
+homebrew_casks:
+  - name: webctl
+    repository:
+      owner: dorkitude
+      name: homebrew-webctl
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/dorkitude/webctl
+    description: Smart web search CLI for agents, backed by Jev. Saves a lot of tokens.
+    license: MIT
+    commit_author:
+      name: goreleaser
+      email: kyle@kylewild.com
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/webctl"]
+          end
+
+release:
+  github:
+    owner: dorkitude
+    name: webctl
+  draft: false
+
+changelog:
+  use: github
+  filters:
+    exclude: ["^docs:", "^ci:"]

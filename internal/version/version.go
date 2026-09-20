@@ -1,4 +1,4 @@
-// Package version holds the multi_search_web behavior version. Bump it whenever
+// Package version holds the webctl behavior version. Bump it whenever
 // search, filtering, or scraping behavior changes in a way that affects
 // results, so eval runs stored against it are never mixed across versions.
 package version

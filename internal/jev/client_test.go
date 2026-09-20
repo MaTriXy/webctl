@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 // jevServer is a mock System One endpoint. handler receives the decoded

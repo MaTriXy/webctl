@@ -1,0 +1,14 @@
+{
+  "name": "webctl",
+  "version": "0.1.0",
+  "description": "Smart web search CLI for agents, backed by Jev. Saves a lot of tokens.",
+  "license": "MIT",
+  "repository": "github:dorkitude/webctl",
+  "homepage": "https://github.com/dorkitude/webctl",
+  "bin": { "webctl": "bin/webctl.js" },
+  "files": ["bin/webctl.js", "install.js"],
+  "scripts": { "postinstall": "node install.js" },
+  "os": ["darwin", "linux"],
+  "cpu": ["x64", "arm64"],
+  "engines": { "node": ">=18" }
+}

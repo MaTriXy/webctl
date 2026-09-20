@@ -1,4 +1,4 @@
-// Package cli wires up the multi_search_web cobra commands.
+// Package cli wires up the webctl cobra commands.
 package cli
 
 import (
@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
-	version_ "github.com/dorkitude/multi_search_web/internal/version"
+	"github.com/dorkitude/webctl/internal/config"
+	version_ "github.com/dorkitude/webctl/internal/version"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 	// otherwise the behavior version is reported.
 	version = version_.Version
 
-	// configDir overrides ~/multi_search_web when set via --config-dir.
+	// configDir overrides ~/webctl when set via --config-dir.
 	configDir string
 	// keysFile overrides ~/secrets/keys.json when set via --keys-file.
 	keysFile string
@@ -28,21 +28,21 @@ var (
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "multi_search_web [flags] <query>",
+		Use:   "webctl [flags] <query>",
 		Short: "Web search qualified by Jev's typed relevance scoring",
 		Long: `Searches several web providers at once, folds duplicates, and has Jev
 (TypeSafe's System One model) score every result for topic and source
 quality, so only results worth reading reach your context window.
 
-Required: a Jev key (multi_search_web setup). Nothing else: search runs
+Required: a Jev key (webctl setup). Nothing else: search runs
 through ketch (github.com/1broseidon/ketch) and DuckDuckGo, or your own
 SearXNG. Paid providers join only when you set a key. Throttled providers
 back off (see "cooldown").
 
 Help text is short by design. The full reference is compiled in:
-  multi_search_web docs            topics
-  multi_search_web docs <topic>    one page (search, providers, config, ...)
-  multi_search_web docs all        everything`,
+  webctl docs            topics
+  webctl docs <topic>    one page (search, providers, config, ...)
+  webctl docs all        everything`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -54,7 +54,7 @@ Help text is short by design. The full reference is compiled in:
 			return runSearch(cmd, args)
 		},
 	}
-	root.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default ~/multi_search_web)")
+	root.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default ~/webctl)")
 	root.PersistentFlags().StringVar(&keysFile, "keys-file", "", "keys file (default ~/secrets/keys.json)")
 
 	addSearchFlags(root)

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 // Run is one invocation of the suite: its settings, tally, and every

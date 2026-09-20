@@ -1,6 +1,6 @@
 # Evals
 
-`multi_search_web eval` runs the cases in `evals/cases/` through the real pipeline. Each run is saved as one JSON file under `~/multi_search_web/evals/` (test output, kept out of the repository). The full method and the most recent results are in `docs/EVAL_REPORT.md`; the case format is in `evals/README.md`.
+`webctl eval` runs the cases in `evals/cases/` through the real pipeline. Each run is saved as one JSON file under `~/webctl/evals/` (test output, kept out of the repository). The full method and the most recent results are in `docs/EVAL_REPORT.md`; the case format is in `evals/README.md`.
 
 ## Stages
 
@@ -13,14 +13,14 @@ Each stage records results, characters, hand-labelled junk-domain hits, audit-fl
 ## Running
 
 ```
-multi_search_web eval                                   # all cases, all stages, 2 in parallel
-multi_search_web eval -p searxng --verbose reddit-quiet-switches
-multi_search_web eval --modes filter --json
-multi_search_web eval --reuse-searches latest           # judge the last run's provider results again
-multi_search_web eval --reuse-searches latest:0.0.016 --notes "prompt v5"
-multi_search_web eval report                            # tables: latest run of every version
-multi_search_web eval report --run latest --compare     # per-case raw vs. filter table
-multi_search_web eval report --version 0.0.016 --cases
+webctl eval                                   # all cases, all stages, 2 in parallel
+webctl eval -p searxng --verbose reddit-quiet-switches
+webctl eval --modes filter --json
+webctl eval --reuse-searches latest           # judge the last run's provider results again
+webctl eval --reuse-searches latest:0.0.016 --notes "prompt v5"
+webctl eval report                            # tables: latest run of every version
+webctl eval report --run latest --compare     # per-case raw vs. filter table
+webctl eval report --version 0.0.016 --cases
 ```
 
 The suite needs a Jev key. Search results drift from hour to hour, so to compare two versions of the filter on identical inputs, run once, then run again with `--reuse-searches <that run>`: the second run skips the providers and judges the saved results.

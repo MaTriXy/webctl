@@ -1,4 +1,4 @@
-# multi_search_web evals
+# webctl evals
 
 End-to-end checks of search quality. Each case runs one real provider search
 (the auto chain by default) and then up to three stages on the same results:
@@ -20,18 +20,18 @@ These hit live APIs and cost money. They are not run by `go test`.
 
 ## Running
 
-You need a Jev key (`multi_search_web setup`). Search keys are optional: the
+You need a Jev key (`webctl setup`). Search keys are optional: the
 keyless Exa and Parallel endpoints are used without them.
 
 ```bash
-go build -o multi_search_web ./cmd/multi_search_web
+go build -o webctl ./cmd/webctl
 
-./multi_search_web eval                       # every case, all stages, 2 in parallel
-./multi_search_web eval --modes filter        # one stage only
-./multi_search_web eval -p parallel           # pin one provider
-./multi_search_web eval --verbose reddit-espresso-grinder github-uv
-./multi_search_web eval --json | jq '.summary'
-./multi_search_web eval --cases ./my-cases
+./webctl eval                       # every case, all stages, 2 in parallel
+./webctl eval --modes filter        # one stage only
+./webctl eval -p parallel           # pin one provider
+./webctl eval --verbose reddit-espresso-grinder github-uv
+./webctl eval --json | jq '.summary'
+./webctl eval --cases ./my-cases
 ```
 
 The command exits non-zero if any case fails or errors.
@@ -42,16 +42,16 @@ second run judges the first run's provider results without searching.
 
 ## Run files
 
-Every run is saved as one JSON file under `~/multi_search_web/evals/`
+Every run is saved as one JSON file under `~/webctl/evals/`
 (`--runs-dir` to change it, `--no-save` to skip). The file holds the settings,
 the tally, and every report with its stages, judged scores, and raw provider
 results. Runs are test output and stay out of the repository; the write-up in
 `docs/EVAL_REPORT.md` is what gets committed.
 
 ```bash
-./multi_search_web eval report                    # latest run of every version
-./multi_search_web eval report --run latest --compare
-./multi_search_web eval --reuse-searches latest   # re-judge the same provider results
+./webctl eval report                    # latest run of every version
+./webctl eval report --run latest --compare
+./webctl eval --reuse-searches latest   # re-judge the same provider results
 ```
 
 ## Writing a case

@@ -28,7 +28,7 @@ func (e *APIError) Error() string {
 		return fmt.Sprintf("%s: rate limited or free quota spent (HTTP %d); %s or try again later", e.Provider, e.Status, e.keyHint())
 	case http.StatusUnauthorized, http.StatusForbidden:
 		if e.keySlug() != "" {
-			return fmt.Sprintf("%s: key rejected (HTTP %d); check it with `multi_search_web keys validate`", e.Provider, e.Status)
+			return fmt.Sprintf("%s: key rejected (HTTP %d); check it with `webctl keys validate`", e.Provider, e.Status)
 		}
 	}
 	msg := fmt.Sprintf("%s API returned HTTP %d", e.Provider, e.Status)
@@ -47,7 +47,7 @@ func (e *APIError) keySlug() string {
 // keyHint names the command that lifts a provider's keyless limits.
 func (e *APIError) keyHint() string {
 	if slug := e.keySlug(); slug != "" {
-		return "add a key with `multi_search_web keys set " + slug + "`"
+		return "add a key with `webctl keys set " + slug + "`"
 	}
 	return "add an API key"
 }
@@ -100,7 +100,7 @@ func postJSON(ctx context.Context, client *http.Client, providerName, url string
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "multi_search_web/1.0 (+https://github.com/dorkitude/multi_search_web)")
+	req.Header.Set("User-Agent", "webctl/1.0 (+https://github.com/dorkitude/webctl)")
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -136,7 +136,7 @@ func getJSON(ctx context.Context, client *http.Client, providerName, url string,
 		return fmt.Errorf("%s: build request: %w", providerName, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "multi_search_web/1.0 (+https://github.com/dorkitude/multi_search_web)")
+	req.Header.Set("User-Agent", "webctl/1.0 (+https://github.com/dorkitude/webctl)")
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

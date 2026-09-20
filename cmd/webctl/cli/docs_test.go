@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
+	"github.com/dorkitude/webctl/internal/config"
 )
 
 func runDocs(t *testing.T, args ...string) (string, error) {

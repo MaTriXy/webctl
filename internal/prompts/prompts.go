@@ -16,7 +16,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	embedded "github.com/dorkitude/multi_search_web/prompts"
+	embedded "github.com/dorkitude/webctl/prompts"
 )
 
 // Well-known prompt names shipped in prompts/.

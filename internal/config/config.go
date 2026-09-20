@@ -1,10 +1,10 @@
-// Package config resolves runtime configuration for multi_search_web.
+// Package config resolves runtime configuration for webctl.
 //
 // Precedence (highest first):
 //  1. command-line flags (bound by the CLI layer)
-//  2. environment variables (EXA_API_KEY, JEV_API_KEY, SEARXNG_URL, MULTI_SEARCH_WEB_PROVIDER, ...)
-//  3. ~/multi_search_web/config.yaml (optional)
-//  4. ~/secrets/keys.json (for API keys only; --keys-file, MULTI_SEARCH_WEB_KEYS_FILE,
+//  2. environment variables (EXA_API_KEY, JEV_API_KEY, SEARXNG_URL, WEBCTL_PROVIDER, ...)
+//  3. ~/webctl/config.yaml (optional)
+//  4. ~/secrets/keys.json (for API keys only; --keys-file, WEBCTL_KEYS_FILE,
 //     or keys_file in config.yaml point elsewhere)
 //  5. built-in defaults
 package config
@@ -19,8 +19,8 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/dorkitude/multi_search_web/internal/keys"
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/keys"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 // Defaults.
@@ -32,12 +32,12 @@ const (
 	DefaultSources  = 3
 	DefaultJevURL   = "https://api.typesafe.ai"
 	DefaultJevModel = "jev-latest"
-	EnvPrefix       = "MULTI_SEARCH_WEB"
+	EnvPrefix       = "WEBCTL"
 )
 
 // Config is the fully-resolved configuration.
 type Config struct {
-	// Dir is the multi_search_web home directory (~/multi_search_web).
+	// Dir is the webctl home directory (~/webctl).
 	Dir string
 	// KeysPath is the path to keys.json.
 	KeysPath string
@@ -67,7 +67,7 @@ type Config struct {
 
 // Options tweak how Load behaves. Zero value uses defaults.
 type Options struct {
-	// Dir overrides ~/multi_search_web. Mostly for tests.
+	// Dir overrides ~/webctl. Mostly for tests.
 	Dir string
 	// KeysPath overrides the keys file (default ~/secrets/keys.json).
 	KeysPath string
@@ -75,7 +75,7 @@ type Options struct {
 	Viper *viper.Viper
 }
 
-// New returns a Viper instance pre-wired with multi_search_web defaults and env bindings.
+// New returns a Viper instance pre-wired with webctl defaults and env bindings.
 func New() *viper.Viper {
 	v := viper.New()
 	v.SetDefault("provider", DefaultProvider)
@@ -86,7 +86,7 @@ func New() *viper.Viper {
 	v.SetDefault("jev.model", DefaultJevModel)
 	// searxng_url may also be set at the top level of config.yaml.
 	v.SetDefault("searxng_url", "")
-	// keys_file: MULTI_SEARCH_WEB_KEYS_FILE or config.yaml; "" means keys.DefaultPath().
+	// keys_file: WEBCTL_KEYS_FILE or config.yaml; "" means keys.DefaultPath().
 	v.SetDefault("keys_file", "")
 	// Rate-limit cooldowns; see provider.DefaultCooldown.
 	v.SetDefault("cooldown.enabled", provider.DefaultCooldown.Enabled)
@@ -260,9 +260,9 @@ func (c *Config) ProviderKey(name string) (string, error) {
 			return "", nil
 		}
 		if n.IsURL() {
-			return "", fmt.Errorf("no %s configured: run `multi_search_web setup` or set %s", n.Display(), n.EnvVar())
+			return "", fmt.Errorf("no %s configured: run `webctl setup` or set %s", n.Display(), n.EnvVar())
 		}
-		return "", fmt.Errorf("no %s API key configured: run `multi_search_web setup` or set %s", n.Display(), n.EnvVar())
+		return "", fmt.Errorf("no %s API key configured: run `webctl setup` or set %s", n.Display(), n.EnvVar())
 	}
 	return key, nil
 }
@@ -278,7 +278,7 @@ func (c *Config) Usable(name string) bool {
 func (c *Config) JevKey() (string, error) {
 	key := c.Keys.Get(keys.Jev)
 	if key == "" {
-		return "", fmt.Errorf("no Jev API key configured: run `multi_search_web setup`, set %s, or pass --no-filter to skip qualification", keys.Jev.EnvVar())
+		return "", fmt.Errorf("no Jev API key configured: run `webctl setup`, set %s, or pass --no-filter to skip qualification", keys.Jev.EnvVar())
 	}
 	return key, nil
 }

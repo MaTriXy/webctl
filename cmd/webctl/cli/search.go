@@ -15,12 +15,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
-	"github.com/dorkitude/multi_search_web/internal/dedupe"
-	"github.com/dorkitude/multi_search_web/internal/jev"
-	"github.com/dorkitude/multi_search_web/internal/keys"
-	"github.com/dorkitude/multi_search_web/internal/provider"
-	"github.com/dorkitude/multi_search_web/internal/scrape"
+	"github.com/dorkitude/webctl/internal/config"
+	"github.com/dorkitude/webctl/internal/dedupe"
+	"github.com/dorkitude/webctl/internal/jev"
+	"github.com/dorkitude/webctl/internal/keys"
+	"github.com/dorkitude/webctl/internal/provider"
+	"github.com/dorkitude/webctl/internal/scrape"
 )
 
 // searchFlags holds the flag values for the search (root) command.

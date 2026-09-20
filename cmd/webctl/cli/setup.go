@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
-	"github.com/dorkitude/multi_search_web/internal/keys"
+	"github.com/dorkitude/webctl/internal/config"
+	"github.com/dorkitude/webctl/internal/keys"
 )
 
 func newSetupCmd() *cobra.Command {
@@ -45,7 +45,7 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 		return err
 	}
 
-	fmt.Println("=== multi_search_web setup ===")
+	fmt.Println("=== webctl setup ===")
 	fmt.Println()
 	fmt.Println("All keys are optional. With none configured, searches use DuckDuckGo (ddg),")
 	fmt.Println("which needs no setup. Keyed providers give better results and are tried first.")

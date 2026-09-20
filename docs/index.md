@@ -14,4 +14,4 @@ Full reference. `--help` is deliberately short; these pages hold the detail. One
 | `evals` | running and reading the eval suite; the JSON run files it writes |
 | `searxng` | running a local SearXNG so searches never hit a quota |
 
-Read one with `multi_search_web docs <topic>`, all of them with `multi_search_web docs all`.
+Read one with `webctl docs <topic>`, all of them with `webctl docs all`.

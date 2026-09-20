@@ -14,7 +14,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 // MinHash parameters. 64 hashes in 16 bands of 4 rows makes a pair with

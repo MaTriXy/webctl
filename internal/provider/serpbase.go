@@ -44,7 +44,7 @@ type serpBaseResponse struct {
 // Search implements Provider.
 func (s *SerpBase) Search(ctx context.Context, query string, numResults int) ([]SearchResult, error) {
 	body := map[string]any{"q": query, "hl": "en", "gl": "us", "page": 1}
-	headers := map[string]string{"X-API-Key": s.apiKey, "X-SerpBase-Source": "multi_search_web"}
+	headers := map[string]string{"X-API-Key": s.apiKey, "X-SerpBase-Source": "webctl"}
 	var resp serpBaseResponse
 	if err := postJSON(ctx, s.client, "SerpBase", s.baseURL+"/google/search", headers, body, &resp); err != nil {
 		return nil, err

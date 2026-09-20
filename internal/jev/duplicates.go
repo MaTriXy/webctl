@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/dorkitude/multi_search_web/internal/prompts"
+	"github.com/dorkitude/webctl/internal/prompts"
 )
 
 // PairKey is the question key for the i-th candidate pair.

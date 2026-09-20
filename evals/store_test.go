@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dorkitude/multi_search_web/internal/jev"
-	"github.com/dorkitude/multi_search_web/internal/provider"
+	"github.com/dorkitude/webctl/internal/jev"
+	"github.com/dorkitude/webctl/internal/provider"
 )
 
 func TestRunSaveLoadSummarizeRows(t *testing.T) {

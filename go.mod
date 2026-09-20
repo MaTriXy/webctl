@@ -1,4 +1,4 @@
-module github.com/dorkitude/multi_search_web
+module github.com/dorkitude/webctl
 
 go 1.26.0
 

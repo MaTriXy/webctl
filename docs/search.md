@@ -1,6 +1,6 @@
 # Search
 
-`multi_search_web [flags] "<query>"` runs one pipeline: search providers → fold exact duplicates → Jev scores each result → fold near-duplicates → apply the threshold → optionally scrape and chunk-filter → print.
+`webctl [flags] "<query>"` runs one pipeline: search providers → fold exact duplicates → Jev scores each result → fold near-duplicates → apply the threshold → optionally scrape and chunk-filter → print.
 
 ## Pipeline
 
@@ -33,7 +33,7 @@
 | `--json` | JSON array on stdout; diagnostics stay on stderr |
 | `--urls-only` | one URL per line |
 | `-v, --verbose` | show scores, probabilities, dropped results, and every cooldown notice |
-| `--config-dir DIR` | config directory (default `~/multi_search_web`) |
+| `--config-dir DIR` | config directory (default `~/webctl`) |
 | `--keys-file FILE` | keys file (default `~/secrets/keys.json`) |
 
 ## Output
@@ -49,9 +49,9 @@ Terminal: one block per kept result with title, host, URL, score, confidence, en
 ## Examples
 
 ```
-multi_search_web "postgres autovacuum tuning for high-update tables"
-multi_search_web -n 20 -m 2.5 --json "DPO vs RLHF" | jq '.[].url'
-multi_search_web --noul "Is this a peer-reviewed paper?" "sparse autoencoders"
-multi_search_web --scrape --filter-chunks "kubernetes OOMKilled below memory limit"
-multi_search_web --sources 1 -v "why is my Go http server leaking goroutines"
+webctl "postgres autovacuum tuning for high-update tables"
+webctl -n 20 -m 2.5 --json "DPO vs RLHF" | jq '.[].url'
+webctl --noul "Is this a peer-reviewed paper?" "sparse autoencoders"
+webctl --scrape --filter-chunks "kubernetes OOMKilled below memory limit"
+webctl --sources 1 -v "why is my Go http server leaking goroutines"
 ```

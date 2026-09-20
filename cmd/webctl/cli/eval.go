@@ -9,12 +9,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/multi_search_web/evals"
-	"github.com/dorkitude/multi_search_web/internal/config"
-	"github.com/dorkitude/multi_search_web/internal/jev"
-	"github.com/dorkitude/multi_search_web/internal/provider"
-	"github.com/dorkitude/multi_search_web/internal/scrape"
-	version_ "github.com/dorkitude/multi_search_web/internal/version"
+	"github.com/dorkitude/webctl/evals"
+	"github.com/dorkitude/webctl/internal/config"
+	"github.com/dorkitude/webctl/internal/jev"
+	"github.com/dorkitude/webctl/internal/provider"
+	"github.com/dorkitude/webctl/internal/scrape"
+	version_ "github.com/dorkitude/webctl/internal/version"
 )
 
 // newEvalJev builds the Jev client for evals. Tests override it.
@@ -134,7 +134,7 @@ See "docs evals" and evals/README.md.`,
 
 			run := evals.NewRun(version_.Version, gitSHA(), defaultProvider, modes, notes)
 			if !jsonOut {
-				fmt.Fprintf(out, "=== multi_search_web %s eval: %d case(s), provider %s, modes %s, parallel %d ===\n\n", version_.Version, len(cases), defaultProvider, modesFlag, parallel)
+				fmt.Fprintf(out, "=== webctl %s eval: %d case(s), provider %s, modes %s, parallel %d ===\n\n", version_.Version, len(cases), defaultProvider, modesFlag, parallel)
 			}
 			var progress func(*evals.Report)
 			if !jsonOut {

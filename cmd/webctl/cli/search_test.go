@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dorkitude/multi_search_web/internal/config"
-	"github.com/dorkitude/multi_search_web/internal/jev"
-	"github.com/dorkitude/multi_search_web/internal/keys"
-	"github.com/dorkitude/multi_search_web/internal/provider"
-	"github.com/dorkitude/multi_search_web/internal/scrape"
+	"github.com/dorkitude/webctl/internal/config"
+	"github.com/dorkitude/webctl/internal/jev"
+	"github.com/dorkitude/webctl/internal/keys"
+	"github.com/dorkitude/webctl/internal/provider"
+	"github.com/dorkitude/webctl/internal/scrape"
 )
 
 // fakeProvider records the search it was asked to run and returns canned results.
@@ -719,7 +719,7 @@ func TestSearchZeroConfigUsesDDG(t *testing.T) {
 
 func TestSearchConfiguredProviderWithoutKeyErrors(t *testing.T) {
 	h := newHarness(t, keys.Store{JevAPIKey: "j"})
-	t.Setenv("MULTI_SEARCH_WEB_PROVIDER", "sonar")
+	t.Setenv("WEBCTL_PROVIDER", "sonar")
 	_, _, err := h.run("q")
 	if err == nil || !strings.Contains(err.Error(), `configured provider "sonar" is unusable`) {
 		t.Errorf("err = %v", err)

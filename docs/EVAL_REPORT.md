@@ -1,6 +1,6 @@
 # Eval report: filter vs. no-filter
 
-multi_search_web 0.0.013, 2026-09-20. The numbers come from eval runs made while the suite was being built (then stored in a SQLite file, since replaced by JSON run files under `~/multi_search_web/evals/`); regenerate current tables with `multi_search_web eval report --compare`.
+webctl 0.0.013, 2026-09-20. The numbers come from eval runs made while the suite was being built (then stored in a SQLite file, since replaced by JSON run files under `~/webctl/evals/`); regenerate current tables with `webctl eval report --compare`.
 
 ## Summary
 
@@ -165,9 +165,9 @@ The same sweep on v4-rubric You.com inputs (run 10) kept junk at 0/16 from 1.7 t
 ## Reproduce
 
 ```bash
-go build -o multi_search_web ./cmd/multi_search_web
+go build -o webctl ./cmd/webctl
 docker run -d --name searxng -p 8899:8080 -v "$PWD/docs/searxng/settings.yml:/etc/searxng/settings.yml:ro" searxng/searxng:latest
-SEARXNG_URL=http://localhost:8899 MULTI_SEARCH_WEB_PROVIDER=searxng ./multi_search_web eval
-./multi_search_web eval report --compare          # tables per version, latest run each
-./multi_search_web eval --verbose reddit-quiet-switches   # every judged score, keep/drop
+SEARXNG_URL=http://localhost:8899 WEBCTL_PROVIDER=searxng ./webctl eval
+./webctl eval report --compare          # tables per version, latest run each
+./webctl eval --verbose reddit-quiet-switches   # every judged score, keep/drop
 ```

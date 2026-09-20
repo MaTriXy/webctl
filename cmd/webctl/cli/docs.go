@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dorkitude/multi_search_web/docs"
+	"github.com/dorkitude/webctl/docs"
 )
 
 // docTopics is the reading order for `docs all`; anything else in the
@@ -75,7 +75,7 @@ reference is compiled into this binary: run "docs" for the topic list, "docs
 			}
 			out := cmd.OutOrStdout()
 			if len(args) == 0 {
-				fmt.Fprintln(out, "Topics (multi_search_web docs <topic>, or `docs all`):")
+				fmt.Fprintln(out, "Topics (webctl docs <topic>, or `docs all`):")
 				for _, n := range names {
 					body, _ := fs.ReadFile(docs.FS, n+".md")
 					fmt.Fprintf(out, "  %-14s %s\n", n, docSummary(string(body)))
