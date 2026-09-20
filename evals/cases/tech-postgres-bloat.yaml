@@ -1,0 +1,10 @@
+name: tech-postgres-bloat
+query: "postgres table bloat, autovacuum tuning for high update tables"
+num: 15
+tags: [engineering, databases]
+scrape: true
+expected_themes:
+  - autovacuum settings such as scale factor or cost limit
+  - dead tuples, MVCC, or pg_repack/VACUUM FULL
+min_results: 3
+max_results: 12

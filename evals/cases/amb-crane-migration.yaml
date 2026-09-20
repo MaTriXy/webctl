@@ -1,0 +1,10 @@
+name: amb-crane-migration
+query: "crane migration routes and timing"
+num: 15
+min_score: 2.0
+tags: [ambiguous, noise]
+expected_themes:
+  - a named crane species (sandhill, whooping, common crane) and its route
+  - seasonal timing or staging areas
+min_results: 2
+max_results: 10

@@ -1,0 +1,11 @@
+name: reddit-kindle-scribe
+query: "is the Kindle Scribe worth it for handwritten notes, owner reviews"
+num: 15
+tags: [reddit, opinion, noise]
+scrape: true
+expected_domains: [reddit.com]
+expected_themes:
+  - handwriting or note-taking experience on the Kindle Scribe
+  - comparison with alternatives such as reMarkable, Supernote, or Boox
+min_results: 2
+max_results: 12

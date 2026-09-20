@@ -1,0 +1,11 @@
+name: reddit-nyc-neighborhood
+# Listicle SEO sites dominate; the useful content is people describing actual tradeoffs.
+query: "moving from San Francisco to NYC in my 30s which neighborhood, honest tradeoffs"
+num: 15
+tags: [reddit, opinion, noise]
+expected_domains: [reddit.com]
+expected_themes:
+  - named Manhattan or Brooklyn neighborhoods with reasons
+  - tradeoffs such as rent, commute, nightlife, or space
+min_results: 2
+max_results: 12

@@ -1,0 +1,10 @@
+name: github-llm-router
+query: "python library to call OpenAI, Anthropic, and other LLM providers through one interface"
+num: 15
+tags: [github, code, noise]
+expected_domains: [github.com]
+expected_themes:
+  - a specific library such as LiteLLM or an equivalent unified client
+  - provider-agnostic API or drop-in compatible request format
+min_results: 2
+max_results: 12

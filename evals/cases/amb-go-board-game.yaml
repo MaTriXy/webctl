@@ -1,0 +1,10 @@
+name: amb-go-board-game
+query: "go board game opening strategy for beginners"
+num: 15
+min_score: 2.0
+tags: [ambiguous, noise]
+expected_themes:
+  - corner, side, and center opening principles or joseki
+  - beginner-level guidance for the game of Go (baduk/weiqi)
+min_results: 2
+max_results: 10

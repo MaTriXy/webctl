@@ -1,0 +1,12 @@
+name: reddit-quiet-switches
+# Community opinion question; Reddit threads are the real answer. Expect SEO "best of" listicles as noise.
+query: "quietest mechanical keyboard switches for an open office, real user experiences"
+num: 15
+tags: [reddit, opinion, noise]
+scrape: true
+expected_domains: [reddit.com]
+expected_themes:
+  - specific quiet switch models (e.g. silent linear/tactile switches such as Gateron Silent, Boba U4, Cherry MX Silent)
+  - first-hand user experience of noise level in a shared office
+min_results: 2
+max_results: 12

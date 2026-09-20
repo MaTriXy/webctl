@@ -1,0 +1,11 @@
+name: hn-tailscale-wireguard
+query: "Tailscale vs plain WireGuard, when is the extra layer worth it"
+num: 15
+tags: [hackernews, engineering]
+scrape: true
+expected_domains: [news.ycombinator.com, reddit.com]
+expected_themes:
+  - NAT traversal or key distribution handled by Tailscale
+  - reasons to prefer raw WireGuard (control, no third party, simplicity)
+min_results: 3
+max_results: 12

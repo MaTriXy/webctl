@@ -1,0 +1,10 @@
+name: github-rust-tui
+query: "Rust library for building terminal user interfaces with widgets and layouts"
+num: 15
+tags: [github, code]
+expected_domains: [github.com]
+expected_themes:
+  - ratatui (or its predecessor tui-rs)
+  - widgets, layout, or rendering to a terminal backend such as crossterm
+min_results: 2
+max_results: 12

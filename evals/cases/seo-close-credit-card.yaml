@@ -1,0 +1,9 @@
+name: seo-close-credit-card
+query: "does closing a credit card hurt your credit score"
+num: 20
+tags: [seo, noise, finance]
+expected_themes:
+  - credit utilization ratio
+  - average age of accounts or credit history length
+min_results: 2
+max_results: 12

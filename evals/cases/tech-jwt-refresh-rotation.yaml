@@ -1,0 +1,9 @@
+name: tech-jwt-refresh-rotation
+query: "refresh token rotation with JWT, detecting reuse"
+num: 15
+tags: [engineering, security, noise]
+expected_themes:
+  - rotating the refresh token on every use
+  - reuse detection invalidating the token family
+min_results: 3
+max_results: 12

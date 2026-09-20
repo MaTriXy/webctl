@@ -1,0 +1,11 @@
+name: amb-mercury-planet
+# Astrology and the element will crowd in.
+query: "mercury planet surface temperature and orbit facts"
+num: 15
+min_score: 2.0
+tags: [ambiguous, noise]
+expected_themes:
+  - surface temperature range of the planet Mercury
+  - orbital period or distance from the Sun
+min_results: 2
+max_results: 10

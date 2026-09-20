@@ -1,58 +1,59 @@
 # smart_search evals
 
-End-to-end checks of search quality. Each case runs the real pipeline —
-provider search → Jev qualification → threshold filter — and then asks Jev,
-in **one batch request**, whether the surviving results collectively cover a
-set of expected themes. A case passes when the kept-result count is within
-bounds and every theme is covered.
+End-to-end checks of search quality. Each case runs one real provider search
+(the auto chain by default) and then up to three stages on the same results:
+
+| stage | what it measures |
+|---|---|
+| `nofilter` | the raw top-k as it would reach a context window without Jev |
+| `filter` | Jev qualification and the score threshold (the default pipeline) |
+| `scrape` | for cases marked `scrape: true`: fetch the kept pages, keep only Jev-approved chunks |
+
+For every stage the runner records what would be delivered (result count,
+characters, hits on hand-labelled junk domains, hits on the domains where the
+best answers live, and pages the source-quality audit flagged as SEO,
+affiliate, or content-farm) and asks Jev, in one batch request, whether that
+delivery covers the case's expected themes. A case passes when its `filter`
+stage passes.
 
 These hit live APIs and cost money. They are not run by `go test`.
 
 ## Running
 
-You need a configured search provider key and a Jev key (`smart_search setup`).
+You need a Jev key (`smart_search setup`). Search keys are optional: the
+keyless Exa and Parallel endpoints are used without them.
 
 ```bash
-# Build once
 go build -o smart_search ./cmd/smart_search
 
-# Run every embedded case with your default provider
-./smart_search eval
-
-# Pick cases, a provider, and force Jev batch mode for qualification
-./smart_search eval --provider exa --batch mech-interp attention-paper
-
-# Show kept URLs and token usage per case
-./smart_search eval --verbose
-
-# Machine-readable output (array of reports + summary)
+./smart_search eval                       # every case, all stages, 4 in parallel
+./smart_search eval --modes filter        # one stage only
+./smart_search eval -p parallel           # pin one provider
+./smart_search eval --verbose reddit-espresso-grinder github-uv
 ./smart_search eval --json | jq '.summary'
-
-# Run cases from a directory instead of the embedded set
 ./smart_search eval --cases ./my-cases
 ```
 
-The command exits non-zero if any case fails or errors, so it works in CI.
+The command exits non-zero if any case fails or errors.
 
-## Output
+## Results database
 
-```
-=== smart_search eval: 5 cases, provider exa ===
+Every run is stored in `evals/results.db` (SQLite; `--db` changes the path,
+`--db ""` skips it). Rows carry the smart_search behavior version from
+`internal/version`, so runs of different versions never mix. Bump that
+version whenever search, filtering, or scraping behavior changes.
 
-✓ PASS  attention-paper                10 → 4   kept   themes 2/2   confidence 0.91   1.8s
-    ✓ the original 2017 Transformer paper by Vaswani et al.  P(yes)=0.97
-    ✓ self-attention or multi-head attention mechanism      P(yes)=0.94
-✗ FAIL  mech-interp                    20 → 2   kept   themes 1/2   confidence 0.62   3.1s
-    ✓ sparse autoencoders or dictionary learning ...        P(yes)=0.88
-    ✗ transformer circuits or attention head analysis       P(yes)=0.31
-    ✗ too few results: 2 kept, need ≥ 3
-
-4/5 passed, 1 failed
+```bash
+./smart_search eval report                   # per-version, per-mode table (Markdown)
+./smart_search eval report --cases           # plus one row per case and stage
+./smart_search eval report --version 0.0.004
+sqlite3 evals/results.db 'SELECT version, mode, SUM(chars) FROM results GROUP BY 1, 2'
 ```
 
-`confidence` is the mean of Jev's confidence across the theme judgments
-(|P(yes) − 0.5| × 2). For cases with no themes it is the mean confidence of
-the relevance scores of kept results.
+Tables: `runs` (one per invocation: version, git sha, provider, modes, notes,
+tally) and `results` (one per case and stage: pass, results, chars, junk,
+flagged, expected-domain hits, themes covered, page and chunk counts, timing,
+Jev tokens, failures, delivered URLs).
 
 ## Writing a case
 
@@ -60,31 +61,34 @@ Cases are YAML files in `evals/cases/` (embedded into the binary) or any
 directory passed with `--cases`.
 
 ```yaml
-name: mech-interp                 # defaults to the file name
-query: "latest advances in mechanistic interpretability 2025"
-provider: exa                     # optional; --provider overrides
-num: 20                           # results to request (default 10)
-min_score: 1.5                    # relevance cutoff (default 1.0)
-rubric: [irrelevant, related, relevant, perfect]   # optional custom scale
-# noul: "Is this a research paper?"  # yes/no mode instead of scoring;
-                                    # min_score then means P(yes), default 0.5
-batch: true                       # force Jev batch qualification
+name: reddit-espresso-grinder     # defaults to the file name
+query: "espresso grinder under $300 that people actually recommend after owning it"
+num: 15                           # results to request (default 10)
+min_score: 2.0                    # relevance cutoff (default 2.0 on the 0–3 scale)
+tags: [reddit, opinion, noise]    # free labels for reporting
+scrape: true                      # also run the scrape-to-chunks stage
+expected_domains: [reddit.com]    # where the best answers live; dropping every
+                                  # raw hit on these fails the filter stage
+junk_domains: [some-farm.example] # hand-labelled noise; keeping one fails the stage
 expected_themes:                  # every theme must be covered to pass
-  - sparse autoencoders or dictionary learning
-  - transformer circuits
-min_results: 3                    # bounds on kept results (0 = unbounded)
-max_results: 15
-coverage_threshold: 0.5           # P(yes) needed to count a theme as covered
+  - specific grinder models in the sub-$300 range
+  - owner experience rather than a spec sheet
+min_results: 2                    # bounds on kept results (0 = unbounded)
+max_results: 12
+# provider: exa                   # pin a provider for this case
+# rubric: [irrelevant, related, relevant, perfect]   # custom scale
+# noul: "Is this a research paper?"  # yes/no mode; min_score is then P(yes)
+# batch: true                     # force Jev batch qualification
+# coverage_threshold: 0.5         # P(yes) needed to count a theme as covered
 ```
 
 Tips:
 
 - Phrase themes as things a result would *substantively address*, not
-  keywords. Jev judges the whole kept set, so a theme covered by one strong
-  result passes.
+  keywords. Jev judges the whole delivered set, so a theme covered by one
+  strong result passes.
 - Use `max_results` to catch a threshold that is too loose and
   `min_results` to catch one that is too strict.
-- Noul cases are good for testing qualification questions other than
-  relevance (e.g. "is this a primary source?").
-- Search results drift. Prefer themes that are stable over time, or pin the
-  query with a year.
+- Label `junk_domains` from what you actually see in a `nofilter` run; the
+  audit's `flagged` count covers the rest.
+- Search results drift. Prefer themes that are stable over time.

@@ -1,0 +1,10 @@
+name: amb-java-island
+query: "java island volcano hiking travel guide"
+num: 15
+min_score: 2.0
+tags: [ambiguous, noise, travel]
+expected_themes:
+  - a named volcano on Java (e.g. Bromo, Ijen, Merapi)
+  - practical hiking or trip logistics
+min_results: 2
+max_results: 10

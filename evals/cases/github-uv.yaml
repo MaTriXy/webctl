@@ -1,0 +1,10 @@
+name: github-uv
+query: "fast Python package and project manager written in Rust"
+num: 15
+tags: [github, code]
+expected_domains: [github.com]
+expected_themes:
+  - uv by Astral
+  - replacing pip, pip-tools, virtualenv, or pyenv workflows
+min_results: 2
+max_results: 12

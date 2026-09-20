@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -51,6 +52,16 @@ type Case struct {
 	Noul string `yaml:"noul,omitempty" json:"noul,omitempty"`
 	// Batch forces Jev batch mode for qualification (the runner may also force it).
 	Batch bool `yaml:"batch,omitempty" json:"batch,omitempty"`
+	// Tags label the case for reporting (reddit, seo, ambiguous, ...).
+	Tags []string `yaml:"tags,omitempty" json:"tags,omitempty"`
+	// Scrape runs the scrape-to-chunks stage on the kept results.
+	Scrape bool `yaml:"scrape,omitempty" json:"scrape,omitempty"`
+	// ExpectedDomains are hosts where the best answers live. If the raw
+	// results include one and filtering drops them all, the filter stage fails.
+	ExpectedDomains []string `yaml:"expected_domains,omitempty" json:"expected_domains,omitempty"`
+	// JunkDomains are hand-labelled hosts that are noise for this query. A
+	// kept junk result fails the filter stage.
+	JunkDomains []string `yaml:"junk_domains,omitempty" json:"junk_domains,omitempty"`
 
 	// ExpectedThemes must all be covered by the kept results for the case to pass.
 	ExpectedThemes []string `yaml:"expected_themes" json:"expected_themes"`
@@ -206,6 +217,71 @@ type Runner struct {
 	Batch bool
 	// CoverageThreshold is the default P(yes) for a theme to count as covered.
 	CoverageThreshold float64
+
+	// Modes selects the stages to run; nil means ModeFilter only.
+	Modes []Mode
+	// Scraper fetches pages for ModeScrape; nil uses scrape.Fetcher.
+	Scraper Scraper
+	// Parallel bounds concurrent cases in RunAll (≤0 means 1).
+	Parallel int
+	// Version is recorded on every report.
+	Version string
+	// Audit runs the source-quality audit on raw results (one extra Jev
+	// batch call per case) so stages can count flagged pages.
+	Audit bool
+}
+
+// Mode is one evaluation stage.
+type Mode string
+
+const (
+	// ModeNoFilter measures the raw provider results as they would reach a
+	// context window without Jev.
+	ModeNoFilter Mode = "nofilter"
+	// ModeFilter is the standard pipeline: qualify, threshold, keep.
+	ModeFilter Mode = "filter"
+	// ModeScrape fetches kept pages and keeps only Jev-approved chunks.
+	ModeScrape Mode = "scrape"
+)
+
+// AllModes lists every stage in run order.
+var AllModes = []Mode{ModeNoFilter, ModeFilter, ModeScrape}
+
+// ParseModes parses a comma-separated mode list.
+func ParseModes(s string) ([]Mode, error) {
+	var out []Mode
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		switch m := Mode(part); m {
+		case ModeNoFilter, ModeFilter, ModeScrape:
+			out = append(out, m)
+		default:
+			return nil, fmt.Errorf("unknown mode %q (expected nofilter, filter, scrape)", part)
+		}
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no modes given")
+	}
+	return out, nil
+}
+
+func (r *Runner) modes() []Mode {
+	if len(r.Modes) == 0 {
+		return []Mode{ModeFilter}
+	}
+	return r.Modes
+}
+
+func (r *Runner) hasMode(m Mode) bool {
+	for _, have := range r.modes() {
+		if have == m {
+			return true
+		}
+	}
+	return false
 }
 
 // ThemeResult is Jev's judgment of whether one expected theme is covered.
@@ -224,13 +300,50 @@ type KeptResult struct {
 	Confidence float64 `json:"confidence"`
 }
 
-// Report is the outcome of one case.
+// Stage is the measured outcome of one mode on one case. Results, Chars,
+// Junk, and ExpectedHits describe what would reach the context window.
+type Stage struct {
+	Mode         Mode `json:"mode"`
+	Results      int  `json:"results"`
+	Chars        int  `json:"chars"`
+	Junk         int  `json:"junk"`
+	ExpectedHits int  `json:"expected_hits"`
+	// Flagged counts delivered results the source-quality audit judged to
+	// be SEO, affiliate, or content-farm pages.
+	Flagged  int           `json:"flagged"`
+	Themes   []ThemeResult `json:"themes,omitempty"`
+	Covered  int           `json:"covered"`
+	Passed   bool          `json:"passed"`
+	Failures []string      `json:"failures,omitempty"`
+	Error    string        `json:"error,omitempty"`
+	Duration time.Duration `json:"duration_ns"`
+	Usage    jev.Usage     `json:"usage"`
+	URLs     []string      `json:"urls,omitempty"`
+	// Scrape-only: pages fetched, chunk counts, and chars before filtering.
+	PagesOK     int `json:"pages_ok,omitempty"`
+	PagesFailed int `json:"pages_failed,omitempty"`
+	ChunksTotal int `json:"chunks_total,omitempty"`
+	ChunksKept  int `json:"chunks_kept,omitempty"`
+	CharsRaw    int `json:"chars_raw,omitempty"`
+}
+
+// Report is the outcome of one case. The top-level fields describe the
+// filter stage (the product's default behavior); Stages holds every mode
+// that ran.
 type Report struct {
 	Case     string        `json:"case"`
 	Query    string        `json:"query"`
+	Tags     []string      `json:"tags,omitempty"`
+	Version  string        `json:"version,omitempty"`
 	Provider string        `json:"provider"`
 	Passed   bool          `json:"passed"`
 	Duration time.Duration `json:"duration_ns"`
+	// SearchDuration is the provider call alone.
+	SearchDuration time.Duration `json:"search_duration_ns"`
+	// AuditError is set when the source-quality audit failed; Flagged
+	// counts are then zero.
+	AuditError string  `json:"audit_error,omitempty"`
+	Stages     []Stage `json:"stages,omitempty"`
 
 	TotalResults int           `json:"total_results"`
 	KeptResults  int           `json:"kept_results"`
@@ -246,11 +359,13 @@ type Report struct {
 	Usage jev.Usage `json:"usage"`
 }
 
-// Run executes one case. Infrastructure errors (provider/Jev failures) are
-// returned in Report.Error rather than as a Go error, so a suite keeps going.
+// Run executes one case: one provider search, then every configured stage
+// on those results. Infrastructure errors in the filter stage (provider or
+// Jev failures) are returned in Report.Error rather than as a Go error, so
+// a suite keeps going; other stages record their own Error.
 func (r *Runner) Run(ctx context.Context, c Case) *Report {
 	start := time.Now()
-	rep := &Report{Case: c.Name, Query: c.Query}
+	rep := &Report{Case: c.Name, Query: c.Query, Tags: c.Tags, Version: r.Version}
 	defer func() { rep.Duration = time.Since(start) }()
 
 	fail := func(err error) *Report {
@@ -276,102 +391,126 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 	if num <= 0 {
 		num = 10
 	}
+	searchStart := time.Now()
 	results, err := p.Search(ctx, c.Query, num)
+	rep.SearchDuration = time.Since(searchStart)
 	if err != nil {
 		return fail(fmt.Errorf("search: %w", err))
 	}
 	rep.TotalResults = len(results)
 
-	var kept []jev.Qualified
-	if len(results) > 0 {
-		qualified, usage, err := r.Jev.Qualify(ctx, c.Query, results, jev.QualifyOptions{
-			Rubric: c.Rubric,
-			Noul:   c.Noul,
-			Batch:  c.Batch || r.Batch,
-		})
-		rep.Usage.Add(usage)
-		if err != nil {
-			return fail(fmt.Errorf("qualify: %w", err))
+	// One audit of the raw results labels low-value pages; every stage
+	// counts how many of them it delivered.
+	flagged := map[string]bool{}
+	if r.Audit {
+		var usage jev.Usage
+		if flagged, usage, err = r.audit(ctx, c.Query, results); err != nil {
+			rep.AuditError = err.Error()
 		}
-		min := c.threshold()
-		for _, q := range qualified {
-			if q.Err == nil && (q.Score != nil || q.Noul != nil) && q.Value() >= min {
-				kept = append(kept, q)
+		rep.Usage.Add(usage)
+	}
+
+	var kept []KeptResult
+	filtered := false
+	for _, mode := range r.modes() {
+		switch mode {
+		case ModeNoFilter:
+			rep.Stages = append(rep.Stages, r.stageNoFilter(ctx, c, results, flagged))
+		case ModeFilter:
+			st, k, err := r.stageFilter(ctx, c, results, flagged)
+			rep.Stages = append(rep.Stages, st)
+			if err != nil {
+				return fail(err)
 			}
-		}
-		sort.SliceStable(kept, func(i, j int) bool { return kept[i].Value() > kept[j].Value() })
-	}
-	rep.KeptResults = len(kept)
-	rep.Kept = make([]KeptResult, 0, len(kept))
-	for _, q := range kept {
-		rep.Kept = append(rep.Kept, KeptResult{SearchResult: q.Result, Value: q.Value(), Confidence: q.Confidence()})
-	}
-
-	// Count bounds.
-	if c.MinResults > 0 && len(kept) < c.MinResults {
-		rep.Failures = append(rep.Failures, fmt.Sprintf("too few results: %d kept, need ≥ %d", len(kept), c.MinResults))
-	}
-	if c.MaxResults > 0 && len(kept) > c.MaxResults {
-		rep.Failures = append(rep.Failures, fmt.Sprintf("too many results: %d kept, want ≤ %d", len(kept), c.MaxResults))
-	}
-
-	// Theme coverage.
-	if len(c.ExpectedThemes) > 0 {
-		threshold := r.CoverageThreshold
-		if c.CoverageThreshold != nil {
-			threshold = *c.CoverageThreshold
-		}
-		if threshold <= 0 {
-			threshold = DefaultCoverageThreshold
-		}
-		themes, usage, err := r.coverage(ctx, c.Query, c.ExpectedThemes, rep.Kept, threshold)
-		rep.Usage.Add(usage)
-		if err != nil {
-			return fail(fmt.Errorf("theme coverage: %w", err))
-		}
-		rep.Themes = themes
-		var sum float64
-		for _, th := range themes {
-			sum += th.Confidence
-			if !th.Covered {
-				reason := fmt.Sprintf("theme %q not covered (P(yes)=%.2f)", th.Theme, th.Probability)
-				if th.Error != "" {
-					reason = fmt.Sprintf("theme %q not judged: %s", th.Theme, th.Error)
+			kept, filtered = k, true
+			rep.KeptResults = len(kept)
+			rep.Kept = kept
+			rep.Themes = st.Themes
+			rep.Failures = st.Failures
+			rep.Confidence = confidence(st.Themes, kept)
+			rep.Usage.Add(st.Usage)
+		case ModeScrape:
+			if !c.Scrape {
+				continue
+			}
+			if !filtered {
+				st, k, err := r.stageFilter(ctx, c, results, flagged)
+				if err != nil {
+					return fail(err)
 				}
-				rep.Failures = append(rep.Failures, reason)
+				kept, filtered = k, true
+				rep.Usage.Add(st.Usage)
 			}
+			st := r.stageScrape(ctx, c, kept, flagged)
+			rep.Stages = append(rep.Stages, st)
+			rep.Usage.Add(st.Usage)
 		}
-		rep.Confidence = sum / float64(len(themes))
-	} else if len(rep.Kept) > 0 {
-		var sum float64
-		for _, k := range rep.Kept {
-			sum += k.Confidence
-		}
-		rep.Confidence = sum / float64(len(rep.Kept))
 	}
 
-	rep.Passed = len(rep.Failures) == 0
+	rep.Passed = true
+	for _, st := range rep.Stages {
+		if st.Mode == ModeFilter || !filtered {
+			rep.Passed = rep.Passed && st.Passed
+		}
+	}
 	return rep
 }
 
-// RunAll runs every case in order, stopping early only if ctx is cancelled.
+// confidence is the mean of Jev's confidence across theme judgments, or,
+// with no themes, across the relevance judgments of kept results.
+func confidence(themes []ThemeResult, kept []KeptResult) float64 {
+	if len(themes) > 0 {
+		var sum float64
+		for _, th := range themes {
+			sum += th.Confidence
+		}
+		return sum / float64(len(themes))
+	}
+	if len(kept) > 0 {
+		var sum float64
+		for _, k := range kept {
+			sum += k.Confidence
+		}
+		return sum / float64(len(kept))
+	}
+	return 0
+}
+
+// RunAll runs every case, up to Parallel at a time, and returns reports in
+// case order. progress is called as each case finishes (from one goroutine
+// at a time). Cases not started before ctx is cancelled report the error.
 func (r *Runner) RunAll(ctx context.Context, cases []Case, progress func(*Report)) []*Report {
-	reports := make([]*Report, 0, len(cases))
-	for _, c := range cases {
-		if ctx.Err() != nil {
-			rep := &Report{Case: c.Name, Query: c.Query, Error: ctx.Err().Error()}
-			reports = append(reports, rep)
+	reports := make([]*Report, len(cases))
+	workers := r.Parallel
+	if workers <= 0 {
+		workers = 1
+	}
+	var (
+		wg sync.WaitGroup
+		mu sync.Mutex
+	)
+	sem := make(chan struct{}, workers)
+	for i, c := range cases {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, c Case) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			var rep *Report
+			if ctx.Err() != nil {
+				rep = &Report{Case: c.Name, Query: c.Query, Tags: c.Tags, Version: r.Version, Error: ctx.Err().Error()}
+			} else {
+				rep = r.Run(ctx, c)
+			}
+			mu.Lock()
+			reports[i] = rep
 			if progress != nil {
 				progress(rep)
 			}
-			continue
-		}
-		rep := r.Run(ctx, c)
-		reports = append(reports, rep)
-		if progress != nil {
-			progress(rep)
-		}
+			mu.Unlock()
+		}(i, c)
 	}
+	wg.Wait()
 	return reports
 }
 
@@ -392,12 +531,12 @@ type coverageState struct {
 // coverage asks Jev, in a single batch request, whether the kept results
 // cover each theme. With no kept results every theme is reported uncovered
 // without calling Jev.
-func (r *Runner) coverage(ctx context.Context, query string, themes []string, kept []KeptResult, threshold float64) ([]ThemeResult, jev.Usage, error) {
+func (r *Runner) coverage(ctx context.Context, query string, themes []string, results []provider.SearchResult, threshold float64) ([]ThemeResult, jev.Usage, error) {
 	out := make([]ThemeResult, len(themes))
 	for i, th := range themes {
 		out[i] = ThemeResult{Theme: th, Confidence: 1}
 	}
-	if len(kept) == 0 {
+	if len(results) == 0 {
 		return out, jev.Usage{}, nil
 	}
 
@@ -405,10 +544,7 @@ func (r *Runner) coverage(ctx context.Context, query string, themes []string, ke
 	if err != nil {
 		return nil, jev.Usage{}, err
 	}
-	state := coverageState{Query: query, Results: make([]provider.SearchResult, 0, len(kept))}
-	for _, k := range kept {
-		state.Results = append(state.Results, k.SearchResult)
-	}
+	state := coverageState{Query: query, Results: results}
 	questions := make(map[string]jev.Question, len(themes))
 	for i, th := range themes {
 		id := ThemeKey(i)
@@ -491,6 +627,9 @@ func WriteReport(w io.Writer, rep *Report, verbose bool) {
 		fmt.Fprintf(w, "   themes %d/%d", covered, len(rep.Themes))
 	}
 	fmt.Fprintf(w, "   confidence %.2f   %s\n", rep.Confidence, rep.Duration.Round(100*time.Millisecond))
+	for _, st := range rep.Stages {
+		writeStage(w, st)
+	}
 
 	for _, th := range rep.Themes {
 		mark := "✓"
@@ -514,6 +653,43 @@ func WriteReport(w io.Writer, rep *Report, verbose bool) {
 			fmt.Fprintf(w, "    [%d] %.2f  %s\n", i+1, k.Value, k.URL)
 		}
 		fmt.Fprintf(w, "    jev usage: %d input / %d output tokens\n", rep.Usage.InputTokens, rep.Usage.OutputTokens)
+	}
+}
+
+// writeStage prints one stage's delivery numbers on a single line.
+func writeStage(w io.Writer, st Stage) {
+	mark := "✓"
+	if st.Error != "" {
+		mark = "!"
+	} else if !st.Passed {
+		mark = "✗"
+	}
+	fmt.Fprintf(w, "    %s %-8s %2d results  %6d chars", mark, st.Mode, st.Results, st.Chars)
+	if len(st.Themes) > 0 {
+		fmt.Fprintf(w, "  themes %d/%d", st.Covered, len(st.Themes))
+	}
+	if st.Junk > 0 {
+		fmt.Fprintf(w, "  junk %d", st.Junk)
+	}
+	if st.Flagged > 0 {
+		fmt.Fprintf(w, "  flagged %d", st.Flagged)
+	}
+	if st.ExpectedHits > 0 {
+		fmt.Fprintf(w, "  expected-domain %d", st.ExpectedHits)
+	}
+	if st.Mode == ModeScrape {
+		fmt.Fprintf(w, "  pages %d ok/%d failed  chunks %d→%d  %d→%d chars", st.PagesOK, st.PagesFailed, st.ChunksTotal, st.ChunksKept, st.CharsRaw, st.Chars)
+	}
+	fmt.Fprintf(w, "  %s", st.Duration.Round(100*time.Millisecond))
+	if st.Error != "" {
+		fmt.Fprintf(w, "  %s", st.Error)
+	}
+	fmt.Fprintln(w)
+	for _, f := range st.Failures {
+		if st.Mode == ModeFilter && strings.HasPrefix(f, "theme ") {
+			continue // shown in the theme lines above
+		}
+		fmt.Fprintf(w, "        ✗ %s\n", f)
 	}
 }
 

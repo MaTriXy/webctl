@@ -1,0 +1,11 @@
+name: tech-k8s-oomkilled
+query: "kubernetes pod OOMKilled but container memory usage below the limit"
+num: 15
+tags: [engineering, kubernetes]
+scrape: true
+expected_domains: [github.com, stackoverflow.com, reddit.com]
+expected_themes:
+  - page cache, tmpfs/emptyDir, or memory accounting counted by the cgroup
+  - JVM/Go heap vs RSS or a child process exceeding the limit
+min_results: 3
+max_results: 12

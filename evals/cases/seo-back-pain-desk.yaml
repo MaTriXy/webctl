@@ -1,0 +1,9 @@
+name: seo-back-pain-desk
+query: "lower back pain from sitting all day, what actually helps according to physical therapists"
+num: 20
+tags: [seo, noise, health]
+expected_themes:
+  - specific exercises, stretches, or movement breaks
+  - posture, chair, or desk setup adjustments
+min_results: 2
+max_results: 12

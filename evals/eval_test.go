@@ -33,6 +33,7 @@ func (f *fakeProvider) Validate(context.Context) error { return nil }
 type fakeJev struct {
 	scores     map[string]float64
 	themeProbs map[string]float64 // theme text → P(yes); missing → no answer
+	auditYes   map[string]bool    // URL → flagged by the source-quality audit
 	qualifyErr error
 	systemErr  error
 
@@ -66,8 +67,19 @@ func (f *fakeJev) SystemOne(_ context.Context, req *jev.SystemOneRequest) (*jev.
 	}
 	// Round-trip the state through JSON the way the real API would see it.
 	raw, _ := json.Marshal(req.State)
-	_ = json.Unmarshal(raw, &f.gotState)
 	resp := &jev.SystemOneResponse{Answers: map[string]jev.Answer{}, Usage: jev.Usage{InputTokens: 50, OutputTokens: 5}}
+	var audit auditState
+	if json.Unmarshal(raw, &audit) == nil && len(audit.Results) > 0 && audit.Results[0].ID == AuditKey(0) {
+		for _, item := range audit.Results {
+			p := 0.1
+			if f.auditYes[item.URL] {
+				p = 0.9
+			}
+			resp.Answers[item.ID] = jev.Answer{Type: jev.TypeNoul, Noul: &p}
+		}
+		return resp, nil
+	}
+	_ = json.Unmarshal(raw, &f.gotState)
 	for _, th := range f.gotState.Themes {
 		p, ok := f.themeProbs[th.Theme]
 		if !ok {
@@ -439,5 +451,60 @@ func TestEmbeddedCasesAreValid(t *testing.T) {
 		if len(c.ExpectedThemes) == 0 || c.MinResults == 0 {
 			t.Errorf("%s: embedded cases should declare themes and min_results", c.Name)
 		}
+	}
+}
+
+func TestHostMatchesAndForJudge(t *testing.T) {
+	if !hostMatches("https://www.reddit.com/r/x", []string{"reddit.com"}) || !hostMatches("https://old.reddit.com/r/x", []string{"reddit.com"}) {
+		t.Error("subdomains should match")
+	}
+	if hostMatches("https://notreddit.com/", []string{"reddit.com"}) || hostMatches("://bad", []string{"reddit.com"}) {
+		t.Error("unrelated hosts must not match")
+	}
+	long := strings.Repeat("x", judgeResultChars*2)
+	var in []provider.SearchResult
+	for i := 0; i < 40; i++ {
+		in = append(in, provider.SearchResult{Title: "t", URL: "https://u", Snippet: long, Content: "c"})
+	}
+	out := forJudge(in)
+	if len(out) == 0 || len(out) >= 40 || len([]rune(out[0].Snippet)) > judgeResultChars+1 || out[0].Content != "" {
+		t.Errorf("forJudge kept %d results, first snippet %d chars", len(out), len(out[0].Snippet))
+	}
+}
+
+func TestRunAuditFlagsAndStages(t *testing.T) {
+	r, _, fj := newRunner(t)
+	r.Audit = true
+	r.Modes = AllModes
+	fj.auditYes = map[string]bool{blog.URL: true}
+	c := baseCase()
+	c.JunkDomains = []string{"blog.example"}
+	c.ExpectedDomains = []string{"arxiv.org"}
+	rep := r.Run(context.Background(), c)
+	if rep.Error != "" || rep.AuditError != "" || !rep.Passed {
+		t.Fatalf("report = %+v", rep)
+	}
+	if len(rep.Stages) != 2 { // scrape is skipped unless the case asks for it
+		t.Fatalf("stages = %+v", rep.Stages)
+	}
+	raw, filt := rep.Stages[0], rep.Stages[1]
+	if raw.Mode != ModeNoFilter || raw.Results != 3 || raw.Junk != 1 || raw.Flagged != 1 || raw.ExpectedHits != 1 {
+		t.Errorf("nofilter = %+v", raw)
+	}
+	if filt.Mode != ModeFilter || filt.Results != 2 || filt.Junk != 0 || filt.Flagged != 0 || filt.ExpectedHits != 1 || !filt.Passed {
+		t.Errorf("filter = %+v", filt)
+	}
+
+	// Keeping junk fails the filter stage; dropping every expected-domain hit does too.
+	fj.scores[blog.URL] = 2.9
+	rep = r.Run(context.Background(), c)
+	if rep.Passed || !strings.Contains(strings.Join(rep.Failures, ";"), "junk") {
+		t.Errorf("junk kept should fail: %+v", rep.Failures)
+	}
+	fj.scores[blog.URL] = 0.4
+	fj.scores[paper.URL] = 0.2
+	rep = r.Run(context.Background(), c)
+	if rep.Passed || !strings.Contains(strings.Join(rep.Failures, ";"), "dropped every result from arxiv.org") {
+		t.Errorf("dropping the expected domain should fail: %+v", rep.Failures)
 	}
 }

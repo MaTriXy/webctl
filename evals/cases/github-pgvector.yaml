@@ -1,0 +1,10 @@
+name: github-pgvector
+query: "Postgres extension for vector similarity search"
+num: 15
+tags: [github, code, noise]
+expected_domains: [github.com]
+expected_themes:
+  - pgvector
+  - index types or distance operators (HNSW, IVFFlat, cosine, L2)
+min_results: 2
+max_results: 12

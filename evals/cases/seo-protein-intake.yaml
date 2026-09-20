@@ -1,0 +1,10 @@
+name: seo-protein-intake
+query: "how much protein per day to build muscle, what the studies say"
+num: 20
+tags: [seo, noise, health]
+scrape: true
+expected_themes:
+  - a grams-per-kilogram or per-pound recommendation
+  - reference to research, meta-analysis, or a named study
+min_results: 2
+max_results: 12

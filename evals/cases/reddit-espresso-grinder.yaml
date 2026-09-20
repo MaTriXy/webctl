@@ -1,0 +1,11 @@
+name: reddit-espresso-grinder
+query: "espresso grinder under $300 that people actually recommend after owning it"
+num: 15
+tags: [reddit, opinion, noise]
+scrape: true
+expected_domains: [reddit.com]
+expected_themes:
+  - specific grinder models in the sub-$300 range (e.g. DF64, Baratza Sette, Eureka Mignon, 1Zpresso)
+  - owner experience or long-term impressions rather than a spec sheet
+min_results: 2
+max_results: 12

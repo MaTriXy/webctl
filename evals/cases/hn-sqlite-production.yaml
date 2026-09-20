@@ -1,0 +1,11 @@
+name: hn-sqlite-production
+query: "using SQLite as the production database for a web app, tradeoffs and experiences"
+num: 15
+tags: [hackernews, engineering]
+scrape: true
+expected_domains: [news.ycombinator.com]
+expected_themes:
+  - write concurrency or single-writer limits of SQLite
+  - WAL mode, Litestream, or backup/replication approaches
+min_results: 3
+max_results: 12

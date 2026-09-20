@@ -1,0 +1,10 @@
+name: seo-vpn-home-wifi
+# Affiliate VPN reviews will crowd out the actual answer.
+query: "do I actually need a VPN on my home wifi, security reasoning not marketing"
+num: 20
+tags: [seo, noise, security]
+expected_themes:
+  - HTTPS already encrypting most traffic
+  - what a VPN does and does not protect against on a trusted home network
+min_results: 2
+max_results: 12

@@ -1,0 +1,10 @@
+name: hn-monolith-return
+query: "companies that moved from microservices back to a monolith and why"
+num: 15
+tags: [hackernews, engineering, noise]
+expected_domains: [news.ycombinator.com]
+expected_themes:
+  - a specific company or team that consolidated services (e.g. Amazon Prime Video, Segment)
+  - operational cost or complexity as the reason
+min_results: 3
+max_results: 12
