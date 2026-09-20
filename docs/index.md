@@ -11,7 +11,7 @@ Full reference. `--help` is deliberately short; these pages hold the detail. One
 | `scraping` | `--scrape` and `--filter-chunks`, Reddit handling, fetch fallbacks |
 | `dedupe` | the two duplicate passes and the MinHash/Jev design |
 | `config` | every setting, precedence, environment names, the `config` and `keys` commands, file locations |
-| `evals` | running and reading the eval suite, the results database |
+| `evals` | running and reading the eval suite; the `evals/results.db` SQLite file it writes |
 | `searxng` | running a local SearXNG so searches never hit a quota |
 
 Read one with `multi_search_web docs <topic>`, all of them with `multi_search_web docs all`.
