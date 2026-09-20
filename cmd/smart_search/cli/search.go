@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/url"
 	"sort"
 	"strings"
@@ -29,6 +30,8 @@ type searchFlags struct {
 	batch    bool
 	rubric   string
 	noul     string
+	multi    bool
+	random   bool
 }
 
 var sf searchFlags
@@ -45,6 +48,8 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.batch, "batch", false, "score all results in a single Jev request")
 	f.StringVar(&sf.rubric, "rubric", "", "comma-separated score criteria, lowest to highest (overrides the default rubric)")
 	f.StringVar(&sf.noul, "noul", "", "ask Jev a yes/no question about each result instead of scoring")
+	f.BoolVar(&sf.multi, "multi", false, "query every usable backend in parallel and fuse the rankings (RRF)")
+	f.BoolVar(&sf.random, "random", false, "query one random usable backend, falling back to the others on failure")
 }
 
 // qualifier is the slice of *jev.Client the search pipeline depends on.
@@ -78,8 +83,9 @@ const noulDefaultThreshold = 0.5
 // searchOptions is the fully-resolved, validated input to the pipeline.
 type searchOptions struct {
 	Query string
-	// Providers is the ordered chain to try; the first that succeeds wins.
+	// Providers is the ordered chain to try (or, with modeMulti, to fuse).
 	Providers []string
+	Mode      searchMode
 	Num       int
 	MinScore  float64
 	NoFilter  bool
@@ -91,6 +97,15 @@ type searchOptions struct {
 }
 
 type outputFormat int
+
+// searchMode selects how the provider chain is used.
+type searchMode int
+
+const (
+	modeChain  searchMode = iota // first success in chain order
+	modeMulti                    // all providers in parallel, fused with RRF
+	modeRandom                   // chain in random order
+)
 
 const (
 	formatPretty outputFormat = iota
@@ -121,6 +136,12 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	}
 	if f.rubric != "" && f.noul != "" {
 		return searchOptions{}, errors.New("--rubric and --noul are mutually exclusive")
+	}
+	if f.multi && f.random {
+		return searchOptions{}, errors.New("--multi and --random are mutually exclusive")
+	}
+	if f.provider != "" && (f.multi || f.random) {
+		return searchOptions{}, errors.New("--provider cannot be combined with --multi or --random")
 	}
 
 	opts := searchOptions{
@@ -168,6 +189,12 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		return searchOptions{}, err
 	}
 	opts.Providers = chain
+	switch {
+	case f.multi:
+		opts.Mode = modeMulti
+	case f.random:
+		opts.Mode = modeRandom
+	}
 	return opts, nil
 }
 
@@ -203,21 +230,21 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		}
 	}
 
-	p, results, err := searchChain(ctx, cfg, opts.Providers, opts.Query, opts.Num, errOut)
+	label, results, engines, err := runSearchStage(ctx, cfg, opts, errOut)
 	if err != nil {
 		return err
 	}
 
 	if opts.NoFilter {
 		if len(results) == 0 && opts.Format == formatPretty {
-			fmt.Fprintf(errOut, "%s returned no results.\n", p.Name())
+			fmt.Fprintf(errOut, "%s returned no results.\n", label)
 		}
-		return writeRaw(out, results, opts.Format)
+		return writeRaw(out, toRaw(results, engines), opts.Format)
 	}
 
 	if len(results) == 0 {
 		if opts.Format == formatPretty {
-			fmt.Fprintf(errOut, "%s returned no results.\n", p.Name())
+			fmt.Fprintf(errOut, "%s returned no results.\n", label)
 		}
 		return writeQualified(out, nil, opts)
 	}
@@ -233,23 +260,89 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 	}
 
 	ranked := rank(qualified, opts.MinScore)
+	for i := range ranked {
+		ranked[i].Engines = engines[ranked[i].Result.URL]
+	}
 	if opts.Format == formatPretty || opts.Verbose {
-		writeSummary(errOut, p.Name(), ranked, opts, usage)
+		writeSummary(errOut, label, ranked, opts, usage)
 	}
 	return writeQualified(out, ranked, opts)
+}
+
+// shuffleChain randomizes the order of a copy of chain. Tests override it.
+var shuffleChain = func(chain []string) []string {
+	out := append([]string(nil), chain...)
+	rand.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+	return out
+}
+
+// runSearchStage runs the provider stage for opts.Mode. It returns a label
+// naming the engine(s) that answered, the results, and (in multi mode) the
+// engines that returned each URL.
+func runSearchStage(ctx context.Context, cfg *config.Config, opts searchOptions, errOut io.Writer) (string, []provider.SearchResult, map[string][]string, error) {
+	switch opts.Mode {
+	case modeMulti:
+		return searchMulti(ctx, cfg, opts.Providers, opts.Query, opts.Num, errOut)
+	case modeRandom:
+		label, results, err := searchChain(ctx, cfg, shuffleChain(opts.Providers), opts.Query, opts.Num, errOut)
+		return label, results, nil, err
+	}
+	label, results, err := searchChain(ctx, cfg, opts.Providers, opts.Query, opts.Num, errOut)
+	return label, results, nil, err
+}
+
+// searchMulti queries every provider in chain concurrently and fuses the
+// lists with RRF, capped at num. Providers that fail are reported to errOut;
+// it is an error only if none succeed.
+func searchMulti(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (string, []provider.SearchResult, map[string][]string, error) {
+	var (
+		provs []provider.Provider
+		errs  []error
+	)
+	for _, name := range chain {
+		p, err := newProvider(cfg, name)
+		if err != nil {
+			errs = append(errs, err)
+			fmt.Fprintf(errOut, "%s skipped: %v\n", name, err)
+			continue
+		}
+		provs = append(provs, p)
+	}
+	lists, searchErrs := provider.SearchAll(ctx, provs, query, num)
+	for _, p := range provs {
+		if err, ok := searchErrs[p.Name()]; ok {
+			errs = append(errs, fmt.Errorf("%s: %w", p.Name(), err))
+			fmt.Fprintf(errOut, "%s failed: %v\n", p.Name(), err)
+		}
+	}
+	if len(lists) == 0 {
+		return "", nil, nil, fmt.Errorf("all %d providers failed: %w", len(errs), errors.Join(errs...))
+	}
+	names := make([]string, 0, len(lists))
+	for _, l := range lists {
+		names = append(names, l.Engine)
+	}
+	fused := provider.Fuse(lists, provider.RRFK, num)
+	results := make([]provider.SearchResult, 0, len(fused))
+	engines := make(map[string][]string, len(fused))
+	for _, f := range fused {
+		results = append(results, f.SearchResult)
+		engines[f.URL] = f.Engines
+	}
+	return strings.Join(names, "+"), results, engines, nil
 }
 
 // searchChain tries each provider in order and returns the first successful
 // search. Failures are reported to errOut as the chain falls through; if every
 // provider fails, the joined errors are returned.
-func searchChain(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (provider.Provider, []provider.SearchResult, error) {
+func searchChain(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (string, []provider.SearchResult, error) {
 	var errs []error
 	for i, name := range chain {
 		p, err := newProvider(cfg, name)
 		if err == nil {
 			var results []provider.SearchResult
 			if results, err = p.Search(ctx, query, num); err == nil {
-				return p, results, nil
+				return p.Name(), results, nil
 			}
 		}
 		errs = append(errs, err)
@@ -261,15 +354,17 @@ func searchChain(ctx context.Context, cfg *config.Config, chain []string, query 
 		}
 	}
 	if len(errs) == 1 {
-		return nil, nil, errs[0]
+		return "", nil, errs[0]
 	}
-	return nil, nil, fmt.Errorf("all %d providers failed: %w", len(errs), errors.Join(errs...))
+	return "", nil, fmt.Errorf("all %d providers failed: %w", len(errs), errors.Join(errs...))
 }
 
 // rankedResult is a qualified result plus the pipeline's keep/drop decision.
 type rankedResult struct {
 	jev.Qualified
 	Kept bool
+	// Engines lists the backends that returned this URL (multi mode only).
+	Engines []string
 }
 
 // rank sorts qualified results by relevance (highest first) and marks which
@@ -342,8 +437,9 @@ type outputResult struct {
 	Yes         *bool    `json:"yes,omitempty"`
 	Probability *float64 `json:"probability,omitempty"`
 
-	Kept  bool   `json:"kept"`
-	Error string `json:"error,omitempty"`
+	Kept    bool     `json:"kept"`
+	Error   string   `json:"error,omitempty"`
+	Engines []string `json:"engines,omitempty"`
 }
 
 func toOutput(r rankedResult) outputResult {
@@ -352,6 +448,7 @@ func toOutput(r rankedResult) outputResult {
 		URL:     r.Result.URL,
 		Snippet: r.Result.Snippet,
 		Kept:    r.Kept,
+		Engines: r.Engines,
 	}
 	if r.Score != nil {
 		score, conf, max := r.Score.Score, r.Score.Confidence, r.Score.MaxScore()
@@ -368,13 +465,24 @@ func toOutput(r rankedResult) outputResult {
 	return o
 }
 
+// rawResult is the output shape for an unqualified result (--no-filter).
+type rawResult struct {
+	provider.SearchResult
+	Engines []string `json:"engines,omitempty"`
+}
+
+func toRaw(results []provider.SearchResult, engines map[string][]string) []rawResult {
+	out := make([]rawResult, 0, len(results))
+	for _, r := range results {
+		out = append(out, rawResult{SearchResult: r, Engines: engines[r.URL]})
+	}
+	return out
+}
+
 // writeRaw prints unqualified provider results (--no-filter).
-func writeRaw(w io.Writer, results []provider.SearchResult, format outputFormat) error {
+func writeRaw(w io.Writer, results []rawResult, format outputFormat) error {
 	switch format {
 	case formatJSON:
-		if results == nil {
-			results = []provider.SearchResult{}
-		}
 		return writeJSON(w, results)
 	case formatURLs:
 		for _, r := range results {
@@ -383,7 +491,10 @@ func writeRaw(w io.Writer, results []provider.SearchResult, format outputFormat)
 		return nil
 	}
 	for i, r := range results {
-		fmt.Fprintf(w, "[%d] %s — %s\n    %s\n", i+1, titleOf(r), hostOf(r.URL), r.URL)
+		fmt.Fprintf(w, "[%d] %s — %s\n    %s\n", i+1, titleOf(r.SearchResult), hostOf(r.URL), r.URL)
+		if len(r.Engines) > 0 {
+			fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))
+		}
 		if r.Snippet != "" {
 			fmt.Fprintf(w, "    %s\n", clipSnippet(r.Snippet, 240))
 		}
@@ -433,6 +544,9 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 			}
 		case r.Noul != nil:
 			fmt.Fprintf(w, "    P(yes): %.2f  (confidence: %.2f)\n", r.Noul.Probability, r.Noul.Confidence())
+		}
+		if len(r.Engines) > 0 {
+			fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))
 		}
 		if opts.Verbose {
 			switch {

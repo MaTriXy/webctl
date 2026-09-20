@@ -662,3 +662,120 @@ func TestSearchConfiguredProviderWithoutKeyErrors(t *testing.T) {
 		t.Error("should fail before constructing any provider")
 	}
 }
+
+func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
+	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h.provs = map[string]*fakeProvider{
+		"exa": {results: []provider.SearchResult{blog, paper}},
+		"ddg": {results: []provider.SearchResult{paper, wiki}},
+	}
+	out, _, err := h.run("--multi", "--no-filter", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mustJSON[[]rawResult](t, out)
+	// paper appears in both lists (ranks 2 and 1) → top; blog (rank 1) beats wiki (rank 2).
+	wantURLs := []string{paper.URL, blog.URL, wiki.URL}
+	wantEngines := []string{"exa,ddg", "exa", "ddg"}
+	if len(got) != 3 {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range got {
+		if got[i].URL != wantURLs[i] || strings.Join(got[i].Engines, ",") != wantEngines[i] {
+			t.Errorf("[%d] = %s %v; want %s %s", i, got[i].URL, got[i].Engines, wantURLs[i], wantEngines[i])
+		}
+	}
+
+	// Filtered mode: the summary names every engine and engines survive Jev.
+	h = newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h.provs = map[string]*fakeProvider{
+		"exa": {results: []provider.SearchResult{blog, paper}},
+		"ddg": {results: []provider.SearchResult{paper, wiki}},
+	}
+	out, errOut, err := h.run("--multi", "--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errOut, "exa+ddg: 3 results → 2 kept") {
+		t.Errorf("summary = %q", errOut)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 3 || items[0].URL != paper.URL || strings.Join(items[0].Engines, ",") != "exa,ddg" {
+		t.Errorf("items = %+v", items)
+	}
+	out, _, err = h.run("--multi", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Engines: exa, ddg") {
+		t.Errorf("pretty output should list engines:\n%s", out)
+	}
+}
+
+func TestSearchMultiPartialFailureAndCap(t *testing.T) {
+	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h.provs = map[string]*fakeProvider{
+		"exa": {err: errors.New("quota")},
+		"ddg": {results: []provider.SearchResult{paper, wiki, blog}},
+	}
+	out, errOut, err := h.run("--multi", "--no-filter", "--urls-only", "-n", "2", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errOut, "exa failed: quota") {
+		t.Errorf("stderr = %q", errOut)
+	}
+	if out != paper.URL+"\n"+wiki.URL+"\n" {
+		t.Errorf("urls = %q", out)
+	}
+
+	h.provs["ddg"].err = errors.New("blocked")
+	_, _, err = h.run("--multi", "--no-filter", "q")
+	if err == nil || !strings.Contains(err.Error(), "all 2 providers failed") || !strings.Contains(err.Error(), "blocked") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestSearchRandomFallsBack(t *testing.T) {
+	orig := shuffleChain
+	shuffleChain = func(chain []string) []string {
+		out := append([]string(nil), chain...)
+		for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+			out[i], out[j] = out[j], out[i]
+		}
+		return out
+	}
+	t.Cleanup(func() { shuffleChain = orig })
+
+	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h.provs = map[string]*fakeProvider{
+		"ddg": {err: errors.New("blocked")},
+		"exa": {results: []provider.SearchResult{paper}},
+	}
+	_, errOut, err := h.run("--random", "--urls-only", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(h.built, ",") != "ddg,exa" {
+		t.Errorf("random order = %v, want reversed chain ddg,exa", h.built)
+	}
+	if !strings.Contains(errOut, "ddg failed (blocked); trying exa") {
+		t.Errorf("stderr = %q", errOut)
+	}
+}
+
+func TestSearchModeFlagConflicts(t *testing.T) {
+	h := newHarness(t, allKeys())
+	for _, args := range [][]string{
+		{"--multi", "--random", "q"},
+		{"--multi", "-p", "exa", "q"},
+		{"--random", "-p", "exa", "q"},
+	} {
+		if _, _, err := h.run(args...); err == nil {
+			t.Errorf("%v should be rejected", args)
+		}
+	}
+	if len(h.built) != 0 {
+		t.Error("conflicting flags should fail before any search")
+	}
+}
