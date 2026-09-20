@@ -2,6 +2,8 @@
 
 `--scrape` fetches each kept result's page and reduces it to text. `--filter-chunks` keeps only the parts worth quoting.
 
+Agents should use `--scrape --filter-chunks` instead of reading pages themselves most of the time: webctl does the fetch, and only the chunks Jev judges relevant to the query and goal are returned, so a long thread, PDF, or article costs a fraction of the tokens. Read a page directly only when you need it whole.
+
 ## Fetching
 
 Pages are fetched with a 10s timeout, 4 at a time, and converted from HTML to text (scripts, styles, navigation elements dropped; block structure kept as line breaks). Plain text and JSON pass through. A page that cannot be fetched (403 bot wall, timeout) falls back to the provider's own excerpt, marked in the output.

@@ -18,7 +18,7 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 3. **Score.** Jev scores each result 0–10 on topic and source quality. See `filtering`.
 4. **Near-dedupe.** MinHash proposes look-alike pairs; Jev confirms them in one request; groups keep the best copy.
 5. **Threshold.** Results below `min_score` (default 6) are dropped. `--verbose` shows them anyway, marked.
-6. **Scrape** (optional). Kept pages are fetched; `--filter-chunks` keeps only relevant chunks. See `scraping`.
+6. **Scrape** (recommended for agents). Kept pages are fetched; `--filter-chunks` returns only the chunks relevant to the goal, so prefer `--scrape --filter-chunks` over reading pages yourself. See `scraping`.
 7. **Print.** Terminal text, `--json`, or `--urls-only`.
 
 ## Flags
@@ -38,8 +38,8 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 | `--batch` | score every result in one Jev request instead of one request per result |
 | `--no-filter` | skip Jev; print provider results as fused |
 | `--no-dedupe` | skip the Jev near-duplicate pass (exact dedupe still runs) |
-| `--scrape` | fetch each kept result's page text |
-| `--filter-chunks` | with `--scrape`, keep only chunks Jev judges worth quoting |
+| `--scrape` | fetch each kept result's page text; prefer this over fetching pages yourself |
+| `--filter-chunks` | with `--scrape`, return only the chunks Jev judges relevant to the goal |
 | `--max-chars N` | with `--scrape`, cap text per page (default 50000) |
 | `--json` | JSON array on stdout; diagnostics stay on stderr |
 | `--urls-only` | one URL per line |

@@ -24,7 +24,7 @@ I originally built this to give my Pi/Kimi K3 chat stack something akin to what
 
 By default, `webctl` will try 3 web search backends.  Each result set is passed (with the original query and goal) to Jev for scoring;  the high-scoring subset is then deduped by some fancy math (plus Jev).  This means your Claude (or whatever) doesn't have to read as much junk, which saves you $$ (sorry, Anthropic!).
 
-Optionally, webctl can also scrape the result pages so your agent doesn't have to fetch them.  It then parses out the textual content, divides it into chunks, and sends batches of those chunks (plus the original query and goal context) to Jev for scoring.  High-scoring results are returned.  For some workloads (think long PDFs, Reddit/StackOverflow comment threads, developer docs, entire Wikipedia articles, etc), this can save an *enormous* number of chat tokens.
+Agents should use `--scrape --filter-chunks` instead of fetching pages themselves most of the time.  webctl fetches each kept page, parses out the textual content, divides it into chunks, and sends batches of those chunks (plus the original query and goal) to Jev for scoring.  Only the relevant chunks come back, so that is all that lands in the agent's context.  For some workloads (think long PDFs, Reddit/StackOverflow comment threads, developer docs, entire Wikipedia articles, etc), this can save an *enormous* number of chat tokens compared to reading the page.
 
 Feel free to submit a PR if I missed something!  And if I miss the PR, hit me up [@dorkitude](https://x.com/dorkitude) and I'll get to it ASAP.
 
@@ -203,7 +203,7 @@ webctl search "q" --no-filter                              # skip Jev (works wit
 
 ### Scraping
 
-Fetch page text for each kept result; `--filter-chunks` keeps only the ~2000-char chunks Jev says are relevant. [docs/scraping.md](docs/scraping.md)
+Fetch page text for each kept result; `--filter-chunks` keeps only the ~2000-char chunks Jev says are relevant. Agents: prefer this over reading pages yourself most of the time, since only the relevant chunks reach your context. [docs/scraping.md](docs/scraping.md)
 
 ```bash
 webctl search "q" --scrape

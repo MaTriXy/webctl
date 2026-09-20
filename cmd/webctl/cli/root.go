@@ -46,6 +46,10 @@ it, and without a goal the judges can only guess what you are after.
 
   webctl search "<query>" --goal "<what you actually need>"
 
+Add --scrape --filter-chunks instead of reading pages yourself: webctl
+fetches each kept page and returns only the chunks Jev finds relevant,
+so long threads, PDFs, and articles cost a fraction of the tokens.
+
 Help text is short by design. The full reference is compiled in:
   webctl docs            topics
   webctl docs <topic>    one page (search, providers, config, ...)
@@ -77,7 +81,10 @@ goal the judges score against the query alone, which keeps more noise.
     --goal "The score of the Giants game on the night of September 19th."
 
 A bare "webctl <query>" runs the same pipeline without a goal; use it only
-when the query already says everything the judges need.`,
+when the query already says everything the judges need.
+
+Most of the time, add --scrape --filter-chunks rather than fetching pages
+yourself: only the chunks Jev judges relevant to the goal are returned.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
