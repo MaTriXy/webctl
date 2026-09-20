@@ -132,7 +132,7 @@ func TestLoadFSAndListFS(t *testing.T) {
 
 func TestEmbeddedPrompts(t *testing.T) {
 	names := List()
-	want := []string{RelevanceBatch, RelevanceNoul, RelevanceScore}
+	want := []string{RelevanceBatch, RelevanceNoul, RelevanceScore, ThemeCoverage}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("List = %v, want %v", names, want)
 	}
@@ -149,11 +149,15 @@ func TestEmbeddedPrompts(t *testing.T) {
 			t.Errorf("%s: model/description should be set", name)
 		}
 		// Every shipped prompt must render cleanly with full Data.
-		out, err := p.Render(Data{Query: "Q", Title: "T", URL: "U", Snippet: "S", Question: "?", ID: "result_0", Index: 0})
+		out, err := p.Render(Data{Query: "Q", Title: "T", URL: "U", Snippet: "S", Question: "?", Theme: "TH", ID: "result_0", Index: 0})
 		if err != nil {
 			t.Errorf("%s: render: %v", name, err)
 		}
-		for _, needle := range []string{"Q", "T", "U", "S"} {
+		needles := []string{"Q", "T", "U", "S"}
+		if name == ThemeCoverage {
+			needles = []string{"Q", "TH", "result_0"}
+		}
+		for _, needle := range needles {
 			if !strings.Contains(out, needle) {
 				t.Errorf("%s: rendered output missing %q:\n%s", name, needle, out)
 			}
@@ -174,6 +178,10 @@ func TestEmbeddedPrompts(t *testing.T) {
 	noul := MustLoad(RelevanceNoul)
 	if noul.Type != "noul" || len(noul.Criteria) != 0 {
 		t.Errorf("noul = %+v", noul)
+	}
+	cov := MustLoad(ThemeCoverage)
+	if cov.Type != "noul" || !cov.Batch {
+		t.Errorf("theme-coverage = type %q batch %v", cov.Type, cov.Batch)
 	}
 }
 

@@ -1,0 +1,10 @@
+# Disambiguation: the rubric plus a tight threshold should drop car results.
+name: ambiguous-jaguar
+query: "jaguar big cat habitat and diet in the Amazon rainforest"
+num: 15
+min_score: 2.0
+expected_themes:
+  - jaguar (Panthera onca) habitat or range in South America
+  - jaguar diet or hunting behavior
+min_results: 2
+max_results: 10

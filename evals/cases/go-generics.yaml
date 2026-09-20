@@ -1,0 +1,8 @@
+name: go-generics
+query: "how do generics work in Go 1.18 type parameters constraints"
+num: 15
+expected_themes:
+  - type parameters syntax in function or type declarations
+  - constraints and the any / comparable interfaces
+min_results: 2
+max_results: 12

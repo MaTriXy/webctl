@@ -250,6 +250,12 @@ cmd/smart_search/
     search.go              # search command
     setup.go               # interactive setup wizard
     keys.go                # key management helpers
+    eval.go                # eval subcommand
+evals/
+  eval.go                  # eval runner (search → Jev → theme coverage)
+  cases/*.yaml             # eval cases
+  README.md                # how to run and write evals
+prompts/                   # OKF prompt templates (embedded)
 internal/
   provider/
     provider.go            # Provider interface
@@ -262,6 +268,22 @@ internal/
     types.go               # Request/response types
   config/
     config.go              # Viper config + keys.json
+  prompts/
+    prompts.go             # OKF frontmatter parser + template rendering
+```
+
+## Evals
+
+`smart_search eval` runs YAML-defined cases through the full pipeline, then
+asks Jev in one batch request whether the kept results cover each case's
+expected themes. It reports pass/fail per case with Jev's confidence and
+exits non-zero on failure. These make live API calls; see
+[evals/README.md](evals/README.md).
+
+```bash
+smart_search eval                       # all embedded cases
+smart_search eval --provider exa -v     # one provider, show kept URLs
+smart_search eval --json | jq .summary
 ```
 
 ### Provider interface

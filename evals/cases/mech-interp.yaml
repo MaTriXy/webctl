@@ -1,0 +1,9 @@
+name: mech-interp
+query: "latest advances in mechanistic interpretability 2025"
+num: 20
+min_score: 1.5
+expected_themes:
+  - sparse autoencoders or dictionary learning for feature discovery
+  - transformer circuits or attention head analysis
+min_results: 3
+max_results: 15
