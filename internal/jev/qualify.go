@@ -223,23 +223,57 @@ type Qualified struct {
 	Duplicates []provider.SearchResult `json:"duplicates,omitempty"`
 }
 
-// Value returns the comparable relevance value: the score for score mode, or
-// P(yes) for noul mode. Results with no answer yield -1 so they sort last.
+// ScaleMax is the top of the user-facing score scale. Jev judges against a
+// rubric of a few labelled levels; the expected level is reported scaled
+// to 0–ScaleMax so it reads the same whatever the rubric's size.
+const ScaleMax = 10.0
+
+// Scaled returns the score on the 0–ScaleMax scale.
+func (s *ScoreAnswer) Scaled() float64 {
+	max := s.MaxScore()
+	if max <= 0 {
+		return 0
+	}
+	return s.Score / float64(max) * ScaleMax
+}
+
+// DefaultCut is the default keep threshold for a rubric with levels
+// labels: 1.2 levels below the top, on the 0–ScaleMax scale. For the
+// built-in four-level rubric that is 6.0 ("useful" or better).
+func DefaultCut(levels int) float64 {
+	if levels < 2 {
+		return 0
+	}
+	top := float64(levels - 1)
+	return (top - 1.2) / top * ScaleMax
+}
+
+// LevelValue is where level i of a levels-label rubric sits on the scale.
+func LevelValue(i, levels int) float64 {
+	if levels < 2 {
+		return 0
+	}
+	return float64(i) / float64(levels-1) * ScaleMax
+}
+
+// Value returns the comparable relevance value: the 0–ScaleMax score for
+// score mode, or P(yes) for noul mode. Results with no answer yield -1 so
+// they sort last.
 func (q Qualified) Value() float64 {
 	switch {
 	case q.Score != nil:
-		return q.Score.Score
+		return q.Score.Scaled()
 	case q.Noul != nil:
 		return q.Noul.Probability
 	}
 	return -1
 }
 
-// Max returns the top of the scale: len(rubric)-1 for scores, 1 for noul.
+// Max returns the top of the scale: ScaleMax for scores, 1 for noul.
 func (q Qualified) Max() float64 {
 	switch {
 	case q.Score != nil:
-		return float64(q.Score.MaxScore())
+		return ScaleMax
 	case q.Noul != nil:
 		return 1
 	}

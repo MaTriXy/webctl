@@ -242,13 +242,13 @@ func TestSearchDefaultFiltersAndSorts(t *testing.T) {
 	if strings.Contains(out, "SEO blog") {
 		t.Errorf("filtered result should be hidden without --verbose:\n%s", out)
 	}
-	if !strings.Contains(out, "Score: 2.90 / 3  (confidence: 0.80)") {
+	if !strings.Contains(out, "Score: 9.7/10") {
 		t.Errorf("score line missing:\n%s", out)
 	}
 	if strings.Contains(out, "Probabilities") || strings.Contains(out, "✓ Kept") {
 		t.Errorf("verbose-only lines should not appear:\n%s", out)
 	}
-	if !strings.Contains(errOut, "exa: 3 results → 2 kept (min score 1.8)") {
+	if !strings.Contains(errOut, "exa: 3 results → 2 kept (min score 6/10)") {
 		t.Errorf("summary missing from stderr: %q", errOut)
 	}
 }
@@ -266,7 +266,7 @@ func TestSearchVerbose(t *testing.T) {
 		"[3] SEO blog — content-farm.example",
 		"Probabilities: {0: 0.05, 1: 0.05, 2: 0.05, 3: 0.80}",
 		"✓ Kept",
-		"✗ Filtered (below 1.8 threshold)",
+		"✗ Filtered (below 6 threshold)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verbose output missing %q:\n%s", want, out)
@@ -290,7 +290,7 @@ func TestSearchJSON(t *testing.T) {
 	if len(items) != 2 || items[0].URL != paper.URL || items[1].URL != wiki.URL {
 		t.Fatalf("items = %+v", items)
 	}
-	if items[0].Score == nil || *items[0].Score != 2.9 || items[0].MaxScore == nil || *items[0].MaxScore != 3 || !items[0].Kept {
+	if items[0].Score == nil || *items[0].Score != 9.7 || items[0].Confidence != nil || !items[0].Kept {
 		t.Errorf("item[0] = %+v", items[0])
 	}
 	if items[0].Yes != nil || items[0].Probability != nil {
@@ -329,12 +329,12 @@ func TestSearchURLsOnly(t *testing.T) {
 
 func TestSearchMinScore(t *testing.T) {
 	h := newHarness(t, allKeys())
-	out, _, err := h.run("--urls-only", "--min-score", "2.5", "q")
+	out, _, err := h.run("--urls-only", "--min-score", "8.5", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out != paper.URL+"\n" {
-		t.Errorf("min-score 2.5 should keep only the paper, got %q", out)
+		t.Errorf("min-score 8.5 should keep only the paper, got %q", out)
 	}
 
 	out, _, err = h.run("--urls-only", "-m", "0", "q")
@@ -346,7 +346,7 @@ func TestSearchMinScore(t *testing.T) {
 	}
 
 	// config.yaml default is honored when the flag is absent.
-	if err := os.WriteFile(filepath.Join(h.dir, "config.yaml"), []byte("min_score: 2.5\nnum: 4\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.dir, "config.yaml"), []byte("min_score: 8.5\nnum: 4\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out, _, err = h.run("--urls-only", "q")
@@ -412,7 +412,7 @@ func TestSearchNoul(t *testing.T) {
 	if h.qual.gotOpts.Noul != "Is this a research paper?" {
 		t.Errorf("noul question not passed: %+v", h.qual.gotOpts)
 	}
-	if !strings.Contains(out, "P(yes): 0.95  (confidence: 0.90)") {
+	if !strings.Contains(out, "P(yes): 0.95\n    Confidence: 0.90") {
 		t.Errorf("noul line missing:\n%s", out)
 	}
 	if !strings.Contains(errOut, "3 results → 2 kept (P(yes) ≥ 0.50)") {
@@ -449,7 +449,7 @@ func TestSearchRubric(t *testing.T) {
 	if _, _, err := h.run("--rubric", "only-one", "q"); err == nil || !strings.Contains(err.Error(), "at least 2") {
 		t.Errorf("err = %v", err)
 	}
-	if _, _, err := h.run("--rubric", "a,b", "--min-score", "1.5", "q"); err == nil || !strings.Contains(err.Error(), "exceeds the rubric's top score of 1") {
+	if _, _, err := h.run("--rubric", "a,b", "--min-score", "12", "q"); err == nil || !strings.Contains(err.Error(), "exceeds the top score of 10") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -619,7 +619,10 @@ func TestSearchUntitledAndUnparseableURL(t *testing.T) {
 }
 
 func TestRank(t *testing.T) {
-	score := func(s float64) *jev.ScoreAnswer { return &jev.ScoreAnswer{Score: s} }
+	// Scores on the four-level rubric; rank compares them scaled to 0–10.
+	score := func(s float64) *jev.ScoreAnswer {
+		return &jev.ScoreAnswer{Score: s, Legend: map[string]string{"0": "", "1": "", "2": "", "3": ""}}
+	}
 	in := []jev.Qualified{
 		{Result: provider.SearchResult{URL: "low"}, Score: score(0.5)},
 		{Result: provider.SearchResult{URL: "err"}, Err: errors.New("x")},
@@ -627,7 +630,7 @@ func TestRank(t *testing.T) {
 		{Result: provider.SearchResult{URL: "mid"}, Score: score(1.5)},
 		{Result: provider.SearchResult{URL: "none"}}, // no answer, no error
 	}
-	got := rank(in, 1.0)
+	got := rank(in, 3.3)
 	var order []string
 	for _, r := range got {
 		order = append(order, r.Result.URL)

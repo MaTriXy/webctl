@@ -6,9 +6,9 @@
 
 1. **Search.** Up to `sources` providers (default 3) are queried in concurrent waves and their lists fused by reciprocal rank. See `providers`.
 2. **Exact dedupe.** Results with the same normalized URL or title collapse to one. See `dedupe`.
-3. **Score.** Jev scores each result 0–3 on topic and source quality. See `filtering`.
+3. **Score.** Jev scores each result 0–10 on topic and source quality. See `filtering`.
 4. **Near-dedupe.** MinHash proposes look-alike pairs; Jev confirms them in one request; groups keep the best copy.
-5. **Threshold.** Results below `min_score` (default 1.8) are dropped. `--verbose` shows them anyway, marked.
+5. **Threshold.** Results below `min_score` (default 6) are dropped. `--verbose` shows them anyway, marked.
 6. **Scrape** (optional). Kept pages are fetched; `--filter-chunks` keeps only relevant chunks. See `scraping`.
 7. **Print.** Terminal text, `--json`, or `--urls-only`.
 
@@ -21,8 +21,8 @@
 | `-p, --provider NAME` | exactly one provider: exa, parallel, sonar, youcom, ddg, searxng |
 | `--multi` | every available provider |
 | `--random` | every available provider, tried in random order |
-| `-m, --min-score X` | keep results scoring ≥ X on the rubric (default 1.8); with `--noul`, minimum P(yes) (default 0.5) |
-| `--min-results N` | if fewer than N pass the cut, promote the best of the rest (never below 1.0); promoted results are marked `backfilled` |
+| `-m, --min-score X` | keep results scoring ≥ X out of 10 (default 6); with `--noul`, minimum P(yes) (default 0.5) |
+| `--min-results N` | if fewer than N pass the cut, promote the best of the rest (never off-topic); promoted results are marked `backfilled` |
 | `--rubric "a,b,c"` | custom score levels, lowest to highest; default cut is 0.2 below the second-highest level |
 | `--noul "question?"` | ask a yes/no question per result instead of scoring |
 | `--batch` | score every result in one Jev request instead of one request per result |
@@ -39,9 +39,9 @@
 
 ## Output
 
-Terminal: one block per kept result with title, host, URL, score, confidence, engines, snippet, and `Duplicate:` lines for folded copies. A summary line on stderr: `exa+parallel: 15 results → 6 kept (min score 1.8)`, then `N duplicate(s) folded` and Jev token usage.
+Terminal: one block per kept result with title, host, URL, score out of 10, engines, snippet, and `Duplicate:` lines for folded copies. `--verbose` adds Jev's confidence and the per-level probabilities. A summary line on stderr: `exa+parallel: 15 results → 6 kept (min score 1.8)`, then `N duplicate(s) folded` and Jev token usage.
 
-`--json`: an array of objects with `title`, `url`, `snippet`, `score`, `max_score`, `confidence`, `probabilities`, `kept`, `engines`, `duplicates`, and with `--scrape` `content`, `scrape_error`, `chunks_total`, `chunks_kept`, `filter_error`. With `--noul`: `yes` and `probability` instead of score fields. With `--no-filter`: `title`, `url`, `snippet`, `content`, `engines`.
+`--json`: an array of objects with `title`, `url`, `snippet`, `score` (0–10), `kept`, `engines`, `duplicates`, and with `--verbose` `confidence` and `probabilities`, and with `--scrape` `content`, `scrape_error`, `chunks_total`, `chunks_kept`, `filter_error`. With `--noul`: `yes` and `probability` instead of score fields. With `--no-filter`: `title`, `url`, `snippet`, `content`, `engines`.
 
 ## Exit codes
 

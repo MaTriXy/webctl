@@ -54,10 +54,10 @@ var settings = []setting{
 		}
 		return n, nil
 	}},
-	{"min_score", "default relevance cutoff on the 0–3 scale", func(v string) (any, error) {
+	{"min_score", "default relevance cutoff on the 0–10 scale", func(v string) (any, error) {
 		f, err := strconv.ParseFloat(v, 64)
-		if err != nil || f < 0 || f > 3 {
-			return nil, fmt.Errorf("min_score must be a number between 0 and 3, got %q", v)
+		if err != nil || f < 0 || f > 10 {
+			return nil, fmt.Errorf("min_score must be a number between 0 and 10, got %q", v)
 		}
 		return f, nil
 	}},

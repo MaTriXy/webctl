@@ -415,7 +415,7 @@ func TestQualifyPerResult(t *testing.T) {
 	if usage.InputTokens != 10 {
 		t.Errorf("usage = %+v (only the successful call should count)", usage)
 	}
-	if out[0].Value() < 2.5 || out[0].Max() != 3 || out[0].Confidence() != 0.8 {
+	if out[0].Value() < 8.3 || out[0].Value() > 10 || out[0].Max() != 10 || out[0].Confidence() != 0.8 {
 		t.Errorf("qualified accessors = %v %v %v", out[0].Value(), out[0].Max(), out[0].Confidence())
 	}
 	if out[1].Value() != -1 || out[1].Max() != 0 || out[1].Confidence() != 0 {

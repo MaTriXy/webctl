@@ -1,6 +1,6 @@
 # Eval report: filter vs. no-filter
 
-webctl 0.0.013, 2026-09-20. The numbers come from eval runs made while the suite was being built (then stored in a SQLite file, since replaced by JSON run files under `~/webctl/evals/`); regenerate current tables with `webctl eval report --compare`.
+webctl 0.0.013, 2026-09-20. Scores in this report are on the 0–3 rubric-index scale used at the time; the product now reports the same judgment scaled to 0–10 (multiply by 3.33; the 1.8 cut is today's 6). The numbers come from eval runs made while the suite was being built (then stored in a SQLite file, since replaced by JSON run files under `~/webctl/evals/`); regenerate current tables with `webctl eval report --compare`.
 
 ## Summary
 

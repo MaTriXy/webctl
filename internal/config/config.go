@@ -27,7 +27,7 @@ import (
 const (
 	DefaultProvider = "" // auto: first usable in Chain order
 	DefaultNum      = 10
-	DefaultMinScore = 1.8
+	DefaultMinScore = 6.0 // jev.DefaultCut(4): "useful" or better on the 0–10 scale
 	// DefaultSources is how many providers a search gathers from and fuses.
 	DefaultSources  = 3
 	DefaultJevURL   = "https://api.typesafe.ai"

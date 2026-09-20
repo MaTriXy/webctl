@@ -54,8 +54,8 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.IntVar(&sf.sources, "sources", 0, "providers to query and fuse (default 3)")
 	f.BoolVar(&sf.multi, "multi", false, "query every available provider")
 	f.BoolVar(&sf.random, "random", false, "query every available provider in random order")
-	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "keep results scoring at least this on the 0–3 rubric (default 1.8)")
-	f.IntVar(&sf.minResults, "min-results", -1, "if fewer pass the score cut, promote the best of the rest to reach this many (never below 1.0)")
+	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "keep results scoring at least this out of 10 (default 6)")
+	f.IntVar(&sf.minResults, "min-results", -1, "if fewer pass the score cut, promote the best of the rest to reach this many (never off-topic)")
 	f.StringVar(&sf.rubric, "rubric", "", "custom score levels, comma-separated, lowest first")
 	f.StringVar(&sf.noul, "noul", "", "ask this yes/no question per result instead of scoring")
 	f.BoolVar(&sf.batch, "batch", false, "score all results in one Jev request")
@@ -297,6 +297,9 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	if opts.Noul != "" && opts.MinScore > 1 {
 		return searchOptions{}, fmt.Errorf("--min-score %.2f is impossible with --noul: P(yes) is at most 1", opts.MinScore)
 	}
+	if opts.Noul == "" && opts.MinScore > jev.ScaleMax {
+		return searchOptions{}, fmt.Errorf("--min-score %.2f exceeds the top score of %g", opts.MinScore, jev.ScaleMax)
+	}
 
 	if f.rubric != "" {
 		rubric, err := parseRubric(f.rubric)
@@ -304,14 +307,8 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 			return searchOptions{}, err
 		}
 		opts.Rubric = rubric
-		max := float64(len(rubric) - 1)
 		if !explicitMin {
-			// Same rule as the default rubric: lean toward the second-highest
-			// level or better.
-			opts.MinScore = math.Max(max-1.2, 0)
-		}
-		if opts.MinScore > max {
-			return searchOptions{}, fmt.Errorf("--min-score %.2f exceeds the rubric's top score of %g", opts.MinScore, max)
+			opts.MinScore = jev.DefaultCut(len(rubric))
 		}
 	}
 
@@ -704,9 +701,15 @@ func rank(qualified []jev.Qualified, minScore float64) []rankedResult {
 	return out
 }
 
-// BackfillFloor is the lowest score --min-results may promote: the rubric's
-// "low value" level. Off-topic results are never promoted.
-const BackfillFloor = 1.0
+// backfillFloor is the lowest value --min-results may promote: level 1 of
+// the rubric (3.3 of 10 for the built-in one), so off-topic results are
+// never promoted. For yes/no mode it is P(yes) ≥ 0.25.
+func backfillFloor(r *rankedResult) float64 {
+	if r.Score != nil {
+		return jev.LevelValue(1, r.Score.MaxScore()+1)
+	}
+	return 0.25
+}
 
 // backfill promotes the best-scoring dropped results until min are kept,
 // skipping errors and anything under BackfillFloor. ranked must be in
@@ -719,7 +722,7 @@ func backfill(ranked []rankedResult, min int) int {
 			break
 		}
 		r := &ranked[i]
-		if r.Kept || r.Err != nil || (r.Score == nil && r.Noul == nil) || r.Value() < BackfillFloor {
+		if r.Kept || r.Err != nil || (r.Score == nil && r.Noul == nil) || r.Value() < backfillFloor(r) {
 			continue
 		}
 		r.Kept, r.Backfilled = true, true
@@ -751,7 +754,7 @@ func countKept(ranked []rankedResult) (kept, failed int) {
 
 func writeSummary(w io.Writer, providerName string, ranked []rankedResult, opts searchOptions, usage jev.Usage) {
 	kept, failed := countKept(ranked)
-	what := fmt.Sprintf("min score %g", opts.MinScore)
+	what := fmt.Sprintf("min score %g/10", opts.MinScore)
 	if opts.Noul != "" {
 		what = fmt.Sprintf("P(yes) ≥ %.2f", opts.MinScore)
 	}
@@ -770,7 +773,7 @@ func writeSummary(w io.Writer, providerName string, ranked []rankedResult, opts 
 			fmt.Fprintf(w, "; %d backfilled toward --min-results %d", backfilled, opts.MinResults)
 		}
 		if kept < opts.MinResults {
-			fmt.Fprintf(w, "; only %d scored at least %g, so --min-results %d was not reached", kept, BackfillFloor, opts.MinResults)
+			fmt.Fprintf(w, "; only %d were on topic, so --min-results %d was not reached", kept, opts.MinResults)
 		}
 	}
 	fmt.Fprintln(w)
@@ -794,13 +797,13 @@ type outputResult struct {
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
 
-	// Score mode.
+	// Score mode: Score is 0–10. Confidence and Probabilities (per rubric
+	// level) appear only with --verbose.
 	Score         *float64           `json:"score,omitempty"`
-	MaxScore      *int               `json:"max_score,omitempty"`
 	Confidence    *float64           `json:"confidence,omitempty"`
 	Probabilities map[string]float64 `json:"probabilities,omitempty"`
 
-	// Noul mode.
+	// Noul mode: Yes and P(yes). Confidence appears only with --verbose.
 	Yes         *bool    `json:"yes,omitempty"`
 	Probability *float64 `json:"probability,omitempty"`
 
@@ -861,7 +864,7 @@ func pdfFlag(p *pageContent) *bool {
 	return &yes
 }
 
-func toOutput(r rankedResult) outputResult {
+func toOutput(r rankedResult, verbose bool) outputResult {
 	o := outputResult{
 		Title:      r.Result.Title,
 		URL:        r.Result.URL,
@@ -874,13 +877,21 @@ func toOutput(r rankedResult) outputResult {
 		o.Duplicates = append(o.Duplicates, d.URL)
 	}
 	if r.Score != nil {
-		score, conf, max := r.Score.Score, r.Score.Confidence, r.Score.MaxScore()
-		o.Score, o.Confidence, o.MaxScore = &score, &conf, &max
-		o.Probabilities = r.Score.Probabilities
+		score := math.Round(r.Score.Scaled()*10) / 10
+		o.Score = &score
+		if verbose {
+			conf := r.Score.Confidence
+			o.Confidence = &conf
+			o.Probabilities = r.Score.Probabilities
+		}
 	}
 	if r.Noul != nil {
 		yes, p := r.Noul.Yes(), r.Noul.Probability
 		o.Yes, o.Probability = &yes, &p
+		if verbose {
+			conf := r.Noul.Confidence()
+			o.Confidence = &conf
+		}
 	}
 	if r.Err != nil {
 		o.Error = r.Err.Error()
@@ -1004,7 +1015,7 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 	case formatJSON:
 		items := make([]outputResult, 0, len(visible))
 		for _, r := range visible {
-			items = append(items, toOutput(r))
+			items = append(items, toOutput(r, opts.Verbose))
 		}
 		return writeJSON(w, items)
 	case formatURLs:
@@ -1022,12 +1033,19 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 		case r.Err != nil:
 			fmt.Fprintf(w, "    ! Jev error: %v\n", r.Err)
 		case r.Score != nil:
-			fmt.Fprintf(w, "    Score: %.2f / %d  (confidence: %.2f)\n", r.Score.Score, r.Score.MaxScore(), r.Score.Confidence)
-			if opts.Verbose && len(r.Score.Probabilities) > 0 {
-				fmt.Fprintf(w, "    Probabilities: %s\n", r.Score.FormatProbabilities())
+			fmt.Fprintf(w, "    Score: %.1f/10\n", r.Score.Scaled())
+			if opts.Verbose {
+				fmt.Fprintf(w, "    Confidence: %.2f", r.Score.Confidence)
+				if len(r.Score.Probabilities) > 0 {
+					fmt.Fprintf(w, "  Probabilities: %s", r.Score.FormatProbabilities())
+				}
+				fmt.Fprintln(w)
 			}
 		case r.Noul != nil:
-			fmt.Fprintf(w, "    P(yes): %.2f  (confidence: %.2f)\n", r.Noul.Probability, r.Noul.Confidence())
+			fmt.Fprintf(w, "    P(yes): %.2f\n", r.Noul.Probability)
+			if opts.Verbose {
+				fmt.Fprintf(w, "    Confidence: %.2f\n", r.Noul.Confidence())
+			}
 		}
 		if len(r.Engines) > 0 {
 			fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))

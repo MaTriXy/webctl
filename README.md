@@ -182,7 +182,7 @@ webctl --multi "q"                 # every available provider
 
 ### Filtering
 
-Jev scores each result 0–3; the default cut is 1.8 ("Useful" or better). [docs/filtering.md](docs/filtering.md)
+Jev scores each result 0–10; the default cut is 6 ("useful" or better). [docs/filtering.md](docs/filtering.md)
 
 ```bash
 webctl --min-score 2.5 "q"                          # stricter

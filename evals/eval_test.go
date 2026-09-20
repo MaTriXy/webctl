@@ -210,13 +210,13 @@ func TestRunCountBounds(t *testing.T) {
 func TestRunMinScoreAndModes(t *testing.T) {
 	r, _, fj := newRunner(t)
 	c := baseCase()
-	min := 2.5
+	min := 8.5
 	c.MinScore = &min
 	c.Rubric = []string{"a", "b", "c", "d"}
 	c.Batch = true
 	rep := r.Run(context.Background(), c)
 	if rep.KeptResults != 1 || rep.Kept[0].URL != paper.URL {
-		t.Errorf("min_score 2.5 should keep only the paper: %+v", rep.Kept)
+		t.Errorf("min_score 8.5 should keep only the paper: %+v", rep.Kept)
 	}
 	if !fj.gotQualify.Batch || len(fj.gotQualify.Rubric) != 4 {
 		t.Errorf("qualify opts = %+v", fj.gotQualify)
@@ -339,7 +339,7 @@ func TestRunAllAndSummary(t *testing.T) {
 		"✓ PASS  sae", "themes 2/2", "✓ sparse autoencoders", "P(yes)=0.93",
 		"✗ FAIL  fails", "✗ too few results: 2 kept, need ≥ 10",
 		"! ERROR broken", "nope",
-		"[1] 2.80 keep  https://arxiv.org/abs/1", "jev usage:",
+		"[1] 9.33 keep  https://arxiv.org/abs/1", "jev usage:",
 		"1/3 passed, 1 failed, 1 errored",
 	} {
 		if !strings.Contains(out, want) {

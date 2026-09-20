@@ -63,7 +63,7 @@ directory passed with `--cases`.
 name: reddit-espresso-grinder     # defaults to the file name
 query: "espresso grinder under $300 that people actually recommend after owning it"
 num: 15                           # results to request (default 10)
-min_score: 2.5                    # relevance cutoff (default: the product default, 1.8 on the 0–3 scale)
+min_score: 8                      # relevance cutoff out of 10 (default: the product default, 6)
 tags: [reddit, opinion, noise]    # free labels for reporting
 scrape: true                      # also run the scrape-to-chunks stage
 expected_domains: [reddit.com]    # where the best answers live; dropping every
