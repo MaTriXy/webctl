@@ -59,6 +59,7 @@ Get started:
 	addSearchFlags(root)
 	root.AddCommand(newSetupCmd())
 	root.AddCommand(newKeysCmd())
+	root.AddCommand(newConfigCmd())
 	root.AddCommand(newEvalCmd())
 	return root
 }

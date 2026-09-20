@@ -111,6 +111,9 @@ smart_search -n 20 "q"                   # results to request
 ## Other commands
 
 ```bash
+smart_search config show                    # every setting, its value, and where it came from
+smart_search config set provider parallel   # persist a default in ~/smart_search/config.yaml
+smart_search config set min_score 2.2       # also: num, jev.base_url, jev.model, searxng_url, keys_file
 smart_search keys list|set|unset|validate   # non-interactive key management
 smart_search eval                           # run the eval suite (live calls; see evals/README.md)
 smart_search eval report --cases            # Markdown tables from evals/results.db, per version
