@@ -61,6 +61,13 @@ var settings = []setting{
 		}
 		return f, nil
 	}},
+	{"min_results", "backfill the kept set to at least this many from the best of the rest (0 = off)", func(v string) (any, error) {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("min_results must be a non-negative integer, got %q", v)
+		}
+		return n, nil
+	}},
 	{"jev.base_url", "Jev API root", nonEmpty},
 	{"jev.model", "Jev model name", nonEmpty},
 	{"searxng_url", "SearXNG instance URL (keys.json's searxng_url wins when set)", func(v string) (any, error) { return strings.TrimRight(strings.TrimSpace(v), "/"), nil }},
@@ -225,6 +232,8 @@ func effective(cfg *config.Config, file map[string]any, key string) (any, string
 		return cfg.Sources, "default"
 	case "min_score":
 		return cfg.MinScore, "default"
+	case "min_results":
+		return cfg.MinResults, "default"
 	case "jev.base_url":
 		return cfg.JevBaseURL, "default"
 	case "jev.model":

@@ -22,6 +22,7 @@
 | `--multi` | every available provider |
 | `--random` | every available provider, tried in random order |
 | `-m, --min-score X` | keep results scoring ≥ X on the rubric (default 1.8); with `--noul`, minimum P(yes) (default 0.5) |
+| `--min-results N` | if fewer than N pass the cut, promote the best of the rest (never below 1.0); promoted results are marked `backfilled` |
 | `--rubric "a,b,c"` | custom score levels, lowest to highest; default cut is 0.2 below the second-highest level |
 | `--noul "question?"` | ask a yes/no question per result instead of scoring |
 | `--batch` | score every result in one Jev request instead of one request per result |

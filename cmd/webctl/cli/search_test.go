@@ -153,7 +153,7 @@ func newHarness(t *testing.T, store keys.Store) *harness {
 	for _, n := range keys.All {
 		t.Setenv(n.EnvVar(), "")
 	}
-	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "JEV_BASE_URL", "JEV_MODEL"} {
+	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "MIN_RESULTS", "JEV_BASE_URL", "JEV_MODEL"} {
 		t.Setenv(config.EnvPrefix+"_"+k, "")
 	}
 	dir := t.TempDir()
@@ -1201,6 +1201,49 @@ func TestSearchScrapeAlwaysChunksPDFs(t *testing.T) {
 	for _, it := range mustJSON[[]rawResult](t, out) {
 		if it.URL == paper.URL && (it.PDF == nil || it.ChunksTotal != nil) {
 			t.Errorf("no-filter pdf = %+v", it)
+		}
+	}
+}
+
+func TestSearchMinResultsBackfills(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.scores = map[string]float64{paper.URL: 2.9, wiki.URL: 1.4, blog.URL: 0.3}
+	out, errOut, err := h.run("--json", "--verbose", "--min-results", "2", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	kept := map[string]outputResult{}
+	for _, it := range items {
+		if it.Kept {
+			kept[it.URL] = it
+		}
+	}
+	if len(kept) != 2 || kept[paper.URL].Backfilled || !kept[wiki.URL].Backfilled {
+		t.Errorf("kept = %+v", kept)
+	}
+	if _, ok := kept[blog.URL]; ok {
+		t.Error("a result under the 1.0 floor must never be backfilled")
+	}
+	if !strings.Contains(errOut, "1 backfilled toward --min-results 2") || strings.Contains(errOut, "not reached") {
+		t.Errorf("summary = %q", errOut)
+	}
+	// Asking for more than the floor allows reports the shortfall.
+	_, errOut, err = h.run("--urls-only", "--verbose", "--min-results", "3", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errOut, "was not reached") {
+		t.Errorf("shortfall summary = %q", errOut)
+	}
+	// Without the flag nothing is promoted.
+	out, _, err = h.run("--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range mustJSON[[]outputResult](t, out) {
+		if it.Backfilled || (it.URL == wiki.URL && it.Kept) {
+			t.Errorf("unexpected keep without --min-results: %+v", it)
 		}
 	}
 }

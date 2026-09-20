@@ -25,23 +25,24 @@ import (
 
 // searchFlags holds the flag values for the search (root) command.
 type searchFlags struct {
-	provider string
-	num      int
-	minScore float64
-	jsonOut  bool
-	urlsOnly bool
-	noFilter bool
-	verbose  bool
-	batch    bool
-	rubric   string
-	noul     string
-	multi    bool
-	random   bool
-	sources  int
-	scrape   bool
-	maxChars int
-	chunks   bool
-	noDedupe bool
+	provider   string
+	num        int
+	minScore   float64
+	minResults int
+	jsonOut    bool
+	urlsOnly   bool
+	noFilter   bool
+	verbose    bool
+	batch      bool
+	rubric     string
+	noul       string
+	multi      bool
+	random     bool
+	sources    int
+	scrape     bool
+	maxChars   int
+	chunks     bool
+	noDedupe   bool
 }
 
 var sf searchFlags
@@ -54,6 +55,7 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.multi, "multi", false, "query every available provider")
 	f.BoolVar(&sf.random, "random", false, "query every available provider in random order")
 	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "keep results scoring at least this on the 0–3 rubric (default 1.8)")
+	f.IntVar(&sf.minResults, "min-results", -1, "if fewer pass the score cut, promote the best of the rest to reach this many (never below 1.0)")
 	f.StringVar(&sf.rubric, "rubric", "", "custom score levels, comma-separated, lowest first")
 	f.StringVar(&sf.noul, "noul", "", "ask this yes/no question per result instead of scoring")
 	f.BoolVar(&sf.batch, "batch", false, "score all results in one Jev request")
@@ -186,12 +188,16 @@ type searchOptions struct {
 	Sources  int
 	Num      int
 	MinScore float64
-	NoFilter bool
-	Batch    bool
-	Verbose  bool
-	Rubric   []string
-	Noul     string
-	Format   outputFormat
+	// MinResults, when > 0, backfills the kept set from the best-scoring
+	// dropped results up to this count. Results under BackfillFloor are
+	// never promoted.
+	MinResults int
+	NoFilter   bool
+	Batch      bool
+	Verbose    bool
+	Rubric     []string
+	Noul       string
+	Format     outputFormat
 	// Scrape fetches page content for kept results; MaxChars caps it per page.
 	Scrape   bool
 	MaxChars int
@@ -270,6 +276,10 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	}
 	if f.num > 0 {
 		opts.Num = f.num
+	}
+	opts.MinResults = cfg.MinResults
+	if f.minResults >= 0 {
+		opts.MinResults = f.minResults
 	}
 	switch {
 	case f.jsonOut:
@@ -425,6 +435,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		}
 	}
 	ranked := rank(qualified, opts.MinScore)
+	backfill(ranked, opts.MinResults)
 	for i := range ranked {
 		ranked[i].Engines = engines[ranked[i].Result.URL]
 	}
@@ -667,6 +678,9 @@ func searchChain(ctx context.Context, cfg *config.Config, chain []string, query 
 type rankedResult struct {
 	jev.Qualified
 	Kept bool
+	// Backfilled is set when the result was under the score cut but kept
+	// to reach --min-results.
+	Backfilled bool
 	// Engines lists the backends that returned this URL (multi mode only).
 	Engines []string
 	// Page is the scraped content (--scrape), nil when not fetched.
@@ -690,6 +704,39 @@ func rank(qualified []jev.Qualified, minScore float64) []rankedResult {
 	return out
 }
 
+// BackfillFloor is the lowest score --min-results may promote: the rubric's
+// "low value" level. Off-topic results are never promoted.
+const BackfillFloor = 1.0
+
+// backfill promotes the best-scoring dropped results until min are kept,
+// skipping errors and anything under BackfillFloor. ranked must be in
+// rank() order. It returns how many were promoted.
+func backfill(ranked []rankedResult, min int) int {
+	kept, _ := countKept(ranked)
+	promoted := 0
+	for i := range ranked {
+		if kept >= min {
+			break
+		}
+		r := &ranked[i]
+		if r.Kept || r.Err != nil || (r.Score == nil && r.Noul == nil) || r.Value() < BackfillFloor {
+			continue
+		}
+		r.Kept, r.Backfilled = true, true
+		kept++
+		promoted++
+	}
+	if promoted > 0 {
+		sort.SliceStable(ranked, func(i, j int) bool {
+			if ranked[i].Kept != ranked[j].Kept {
+				return ranked[i].Kept
+			}
+			return ranked[i].Value() > ranked[j].Value()
+		})
+	}
+	return promoted
+}
+
 func countKept(ranked []rankedResult) (kept, failed int) {
 	for _, r := range ranked {
 		if r.Kept {
@@ -711,6 +758,20 @@ func writeSummary(w io.Writer, providerName string, ranked []rankedResult, opts 
 	fmt.Fprintf(w, "%s: %d results → %d kept (%s)", providerName, len(ranked), kept, what)
 	if failed > 0 {
 		fmt.Fprintf(w, "; %d not scored (Jev error)", failed)
+	}
+	if opts.MinResults > 0 {
+		backfilled := 0
+		for _, r := range ranked {
+			if r.Backfilled {
+				backfilled++
+			}
+		}
+		if backfilled > 0 {
+			fmt.Fprintf(w, "; %d backfilled toward --min-results %d", backfilled, opts.MinResults)
+		}
+		if kept < opts.MinResults {
+			fmt.Fprintf(w, "; only %d scored at least %g, so --min-results %d was not reached", kept, BackfillFloor, opts.MinResults)
+		}
 	}
 	fmt.Fprintln(w)
 	if opts.Verbose {
@@ -743,9 +804,11 @@ type outputResult struct {
 	Yes         *bool    `json:"yes,omitempty"`
 	Probability *float64 `json:"probability,omitempty"`
 
-	Kept    bool     `json:"kept"`
-	Error   string   `json:"error,omitempty"`
-	Engines []string `json:"engines,omitempty"`
+	Kept bool `json:"kept"`
+	// Backfilled marks a result kept only to reach --min-results.
+	Backfilled bool     `json:"backfilled,omitempty"`
+	Error      string   `json:"error,omitempty"`
+	Engines    []string `json:"engines,omitempty"`
 	// Duplicates are other addresses of the same content that were folded
 	// into this result.
 	Duplicates []string `json:"duplicates,omitempty"`
@@ -800,11 +863,12 @@ func pdfFlag(p *pageContent) *bool {
 
 func toOutput(r rankedResult) outputResult {
 	o := outputResult{
-		Title:   r.Result.Title,
-		URL:     r.Result.URL,
-		Snippet: r.Result.Snippet,
-		Kept:    r.Kept,
-		Engines: r.Engines,
+		Title:      r.Result.Title,
+		URL:        r.Result.URL,
+		Snippet:    r.Result.Snippet,
+		Kept:       r.Kept,
+		Backfilled: r.Backfilled,
+		Engines:    r.Engines,
 	}
 	for _, d := range r.Duplicates {
 		o.Duplicates = append(o.Duplicates, d.URL)
@@ -973,6 +1037,8 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 		}
 		if opts.Verbose {
 			switch {
+			case r.Backfilled:
+				fmt.Fprintf(w, "    ✓ Kept (below the %g cut; backfilled to reach --min-results %d)\n", opts.MinScore, opts.MinResults)
 			case r.Kept:
 				fmt.Fprintln(w, "    ✓ Kept")
 			case r.Err != nil:

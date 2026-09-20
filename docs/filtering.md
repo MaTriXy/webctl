@@ -17,6 +17,10 @@ Two rules are spelled out to Jev: an established source is not marked down for b
 
 `min_score` defaults to 1.8: results Jev leans toward calling useful or better. Raise it (`-m 2.5`) for primary sources only; lower it (`-m 1.5`) to let more mainstream explainers through. The eval report (`docs/EVAL_REPORT.md`) has the sweeps behind the default.
 
+## A floor on the count
+
+`--min-results N` (setting `min_results`, default 0 = off) keeps the score cut but insists on at least N results: if fewer pass, the best-scoring dropped results are promoted, highest first, until N are kept. Promoted results are marked `backfilled: true` in JSON and `Kept (below the 1.8 cut; backfilled ...)` in verbose terminal output, so a confident keep and a floor keep are distinguishable. Nothing scoring under 1.0 (the rubric's off-topic boundary) is ever promoted, and the summary line says when the floor could not be reached.
+
 ## Modes
 
 - **Per result** (default): one Jev request per result, 8 in flight. About 0.4s per search.

@@ -48,6 +48,8 @@ type Config struct {
 	Num int
 	// MinScore is the default relevance cutoff.
 	MinScore float64
+	// MinResults, when > 0, backfills the kept set to this many.
+	MinResults int
 	// Sources is how many providers to query per search.
 	Sources int
 
@@ -81,6 +83,7 @@ func New() *viper.Viper {
 	v.SetDefault("provider", DefaultProvider)
 	v.SetDefault("num", DefaultNum)
 	v.SetDefault("min_score", DefaultMinScore)
+	v.SetDefault("min_results", 0)
 	v.SetDefault("sources", DefaultSources)
 	v.SetDefault("jev.base_url", DefaultJevURL)
 	v.SetDefault("jev.model", DefaultJevModel)
@@ -205,6 +208,7 @@ func Load(opts Options) (*Config, error) {
 		Provider:     strings.ToLower(strings.TrimSpace(v.GetString("provider"))),
 		Num:          v.GetInt("num"),
 		MinScore:     v.GetFloat64("min_score"),
+		MinResults:   v.GetInt("min_results"),
 		Sources:      v.GetInt("sources"),
 		JevBaseURL:   strings.TrimRight(v.GetString("jev.base_url"), "/"),
 		JevModel:     v.GetString("jev.model"),

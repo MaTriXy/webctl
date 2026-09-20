@@ -15,7 +15,7 @@ func clearEnv(t *testing.T) {
 	for _, n := range keys.All {
 		t.Setenv(n.EnvVar(), "")
 	}
-	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "JEV_BASE_URL", "JEV_MODEL", "SOURCES", "COOLDOWN_ENABLED", "COOLDOWN_STEPS"} {
+	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "JEV_BASE_URL", "JEV_MODEL", "SOURCES", "MIN_RESULTS", "COOLDOWN_ENABLED", "COOLDOWN_STEPS"} {
 		t.Setenv(EnvPrefix+"_"+k, "")
 	}
 }

@@ -27,7 +27,7 @@ func TestConfigSetGetShowUnset(t *testing.T) {
 	for _, n := range keys.All {
 		t.Setenv(n.EnvVar(), "")
 	}
-	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "JEV_BASE_URL", "JEV_MODEL", "KEYS_FILE", "SEARXNG_URL", "COOLDOWN_ENABLED", "COOLDOWN_STEPS", "SOURCES"} {
+	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "JEV_BASE_URL", "JEV_MODEL", "KEYS_FILE", "SEARXNG_URL", "COOLDOWN_ENABLED", "COOLDOWN_STEPS", "SOURCES", "MIN_RESULTS"} {
 		t.Setenv(config.EnvPrefix+"_"+k, "")
 	}
 	dir := t.TempDir()
