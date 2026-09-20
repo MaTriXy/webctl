@@ -79,10 +79,8 @@ func (y *Youcom) Search(ctx context.Context, query string, numResults int) ([]Se
 				continue
 			}
 			content := strings.TrimSpace(strings.Join(r.Snippets, "\n"))
-			snippet := r.Description
-			if snippet == "" {
-				snippet = content
-			}
+			// The description is a line or two; the snippets carry the substance.
+			snippet := strings.TrimSpace(r.Description + "\n" + content)
 			out = append(out, SearchResult{Title: collapseWhitespace(title), URL: url, Snippet: excerpt(snippet), Content: content})
 		}
 	}

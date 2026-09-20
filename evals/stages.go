@@ -74,11 +74,16 @@ const (
 	judgeTotalChars  = 30000
 )
 
-// forJudge returns results trimmed to the judge caps.
+// forJudge returns results trimmed to the judge caps. A result's content
+// (the provider's excerpt) stands in for its snippet when it says more, so
+// coverage does not hinge on how terse a provider's snippets are.
 func forJudge(results []provider.SearchResult) []provider.SearchResult {
 	out := make([]provider.SearchResult, 0, len(results))
 	total := 0
 	for _, r := range results {
+		if len([]rune(r.Content)) > len([]rune(r.Snippet)) {
+			r.Snippet = r.Content
+		}
 		r.Content = ""
 		r.Snippet = scrape.Truncate(r.Snippet, judgeResultChars)
 		size := len([]rune(r.Snippet)) + len([]rune(r.Title)) + len([]rune(r.URL))
