@@ -6,7 +6,7 @@ Smart web search CLI for agents, backed by [Jev](https://typesafe.ai). Saves a l
 webctl search "final score san francisco giants september 19th baseball" \
 ```
 
-The query goes to the search engines; the goal goes to every Jev judge next to it, so results are scored against what you actually need. `webctl "<query>"` works too, without a goal.
+...or, more likely:
 
 ```bash
 webctl "San Francisco giants MLB score recent games" \
