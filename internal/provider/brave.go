@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -46,6 +47,11 @@ func (b *Brave) Search(ctx context.Context, query string, numResults int) ([]Sea
 	q := url.Values{"q": {query}, "count": {fmt.Sprint(clampNum(numResults, 20))}, "text_decorations": {"false"}, "result_filter": {"web"}}
 	var resp braveResponse
 	if err := getJSON(ctx, b.client, "Brave", b.baseURL+"/res/v1/web/search?"+q.Encode(), map[string]string{"X-Subscription-Token": b.apiKey}, &resp); err != nil {
+		// Brave reports a bad or missing subscription token as 422.
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnprocessableEntity && strings.Contains(strings.ToUpper(apiErr.Body), "TOKEN") {
+			apiErr.Status = http.StatusUnauthorized
+		}
 		return nil, err
 	}
 	out := make([]SearchResult, 0, len(resp.Web.Results))

@@ -47,8 +47,9 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 
 	fmt.Println("=== webctl setup ===")
 	fmt.Println()
-	fmt.Println("All keys are optional. With none configured, searches use DuckDuckGo (ddg),")
-	fmt.Println("which needs no setup. Keyed providers give better results and are tried first.")
+	fmt.Println("Required: a Jev key. Search keys are optional: without any, searches run")
+	fmt.Println("through ketch and DuckDuckGo. A search key puts that provider first.")
+	fmt.Printf("Each key is written to %s as soon as it is accepted.\n", prettyPath(cfg.KeysPath))
 	fmt.Println()
 
 	// --- Search providers ---
@@ -70,7 +71,7 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 			break
 		}
 		if choice == "q" || choice == "quit" {
-			return errors.New("setup aborted; no changes saved")
+			return errors.New("setup aborted; keys accepted so far are saved")
 		}
 		n, ok := pickProvider(choice)
 		if !ok {
@@ -80,17 +81,20 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 		if err := configureKey(ctx, cfg, store, n, validate); err != nil {
 			return abort(err)
 		}
+		if err := store.Save(cfg.KeysPath); err != nil {
+			return err
+		}
 		fmt.Println()
 	}
 
 	if len(store.ConfiguredProviders()) == 0 && len(cfg.Keys.ConfiguredProviders()) == 0 {
-		fmt.Println("  No keyed provider configured — searches will use DuckDuckGo (ddg).")
+		fmt.Println("  No search key configured; searches will run through ketch and DuckDuckGo.")
 	}
 	fmt.Println()
 
 	// --- Jev ---
 	fmt.Printf("Jev (TypeSafe) configuration: %s\n", statusLabel(cfg, store, keys.Jev))
-	fmt.Println("  Jev filters results for relevance. Optional: without it, pass --no-filter.")
+	fmt.Println("  Jev is the filter and is required; only --no-filter searches work without it.")
 	if store.Has(keys.Jev) {
 		ans, err := keys.PromptLine("  Replace existing Jev key? [y/N]: ")
 		if err != nil {
@@ -198,7 +202,7 @@ func statusLabel(cfg *config.Config, store *keys.Store, n keys.Name) string {
 
 func abort(err error) error {
 	if errors.Is(err, keys.ErrCancelled) {
-		return errors.New("setup cancelled; no changes saved")
+		return errors.New("setup cancelled; keys accepted so far are saved")
 	}
 	return err
 }

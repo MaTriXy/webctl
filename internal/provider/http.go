@@ -183,8 +183,10 @@ func summarizeBody(b []byte) string {
 			case string:
 				return truncate(collapseWhitespace(v), 200)
 			case map[string]any:
-				if m, ok := v["message"].(string); ok {
-					return truncate(collapseWhitespace(m), 200)
+				for _, kk := range []string{"detail", "message"} {
+					if m, ok := v[kk].(string); ok && m != "" {
+						return truncate(collapseWhitespace(m), 200)
+					}
 				}
 			}
 		}
