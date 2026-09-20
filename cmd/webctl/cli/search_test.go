@@ -59,9 +59,12 @@ type fakeQualifier struct {
 	relevantWord   string
 	unansweredWord string
 	chunkErr       error
-	mu             sync.Mutex
-	chunkCalls     int
-	gotChunks      [][]string
+	// chunkUnjudged, when set, returns a *jev.PartialFilterError naming these
+	// chunk indices, as a page whose batches partly failed would.
+	chunkUnjudged []int
+	mu            sync.Mutex
+	chunkCalls    int
+	gotChunks     [][]string
 }
 
 // dupes maps "urlA|urlB" to whether the fake confirms them as duplicates.
@@ -92,6 +95,16 @@ func (f *fakeQualifier) FilterChunks(_ context.Context, ask jev.Ask, chunks []st
 			p = 0.9
 		}
 		out[i] = &jev.NoulAnswer{Probability: p}
+	}
+	if len(f.chunkUnjudged) > 0 {
+		for _, i := range f.chunkUnjudged {
+			if i < len(out) {
+				out[i] = nil
+			}
+		}
+		return out, jev.Usage{}, &jev.PartialFilterError{
+			Unjudged: f.chunkUnjudged, Batches: 2, Failed: 1, Err: errors.New("jev down"),
+		}
 	}
 	return out, jev.Usage{}, nil
 }
@@ -1267,5 +1280,49 @@ func TestSearchGoalReachesJudges(t *testing.T) {
 	_, _, err = h.run("giants score", "--urls-only")
 	if err != nil || h.qual.gotGoal != "" || h.qual.gotQuery != "giants score" {
 		t.Errorf("bare form: %v query %q goal %q", err, h.qual.gotQuery, h.qual.gotGoal)
+	}
+}
+
+// A page whose batches partly failed keeps the chunks Jev never ruled on and
+// still drops the ones it rejected, rather than falling back to the whole page.
+func TestSearchFilterChunksPartialFailureKeepsUnjudged(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.relevantWord = "attention"
+	h.qual.chunkUnjudged = []int{0}
+	h.prov.results = []provider.SearchResult{paper}
+	h.withScraper(map[string]string{paper.URL: bigPage}, nil)
+
+	out, errOut, err := h.run("--scrape", "--filter-chunks", "--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 1 {
+		t.Fatalf("items = %+v", items)
+	}
+	got := items[0]
+	// chunkA unjudged (kept), chunkB rejected (dropped), chunkC relevant (kept).
+	if got.Content != chunkA+"\n\n"+chunkC {
+		t.Errorf("content should keep unjudged + relevant chunks only, got %d chars", len(got.Content))
+	}
+	if got.ChunksKept == nil || *got.ChunksKept != 2 {
+		t.Errorf("chunks_kept = %v, want 2", got.ChunksKept)
+	}
+	if got.ChunksUnjudged == nil || *got.ChunksUnjudged != 1 {
+		t.Errorf("chunks_unjudged = %v, want 1", got.ChunksUnjudged)
+	}
+	if !strings.Contains(got.FilterError, "unjudged") {
+		t.Errorf("filter_error = %q", got.FilterError)
+	}
+	if !strings.Contains(errOut, "partly filtered") {
+		t.Errorf("summary = %q", errOut)
+	}
+
+	out, _, err = h.run("--scrape", "--filter-chunks", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "chunk filter partly failed") || !strings.Contains(out, "1 unjudged") {
+		t.Errorf("pretty output:\n%s", out)
 	}
 }

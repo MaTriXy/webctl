@@ -2,11 +2,13 @@ package jev
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
 
-func TestFilterChunksOneBatchRequest(t *testing.T) {
+func TestFilterChunksBatchesOnePage(t *testing.T) {
 	js := newJevServer(t, func(req SystemOneRequest) (int, any) {
 		answers := map[string]Answer{}
 		for key := range req.Questions {
@@ -26,7 +28,7 @@ func TestFilterChunksOneBatchRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if js.calls.Load() != 1 {
-		t.Errorf("expected exactly one request, got %d", js.calls.Load())
+		t.Errorf("three small chunks should fit one request, got %d", js.calls.Load())
 	}
 	if len(got) != 3 || got[0] == nil || !got[0].Yes() || got[1] == nil || got[1].Yes() || got[2] != nil {
 		t.Errorf("answers = %+v", got)
@@ -54,6 +56,189 @@ func TestFilterChunksOneBatchRequest(t *testing.T) {
 	}
 }
 
+// A long page must not go out as one oversized request: that is what Jev
+// rejects with max_tokens_exceeded.
+func TestFilterChunksSplitsLongPage(t *testing.T) {
+	js := newJevServer(t, func(req SystemOneRequest) (int, any) {
+		answers := map[string]Answer{}
+		for key := range req.Questions {
+			p := 0.9
+			answers[key] = Answer{Type: TypeNoul, Noul: &p}
+		}
+		return 200, SystemOneResponse{Answers: answers, Usage: Usage{InputTokens: 10}}
+	})
+	// 200 chunks of ~2,000 chars: the shape that used to blow the context.
+	chunks := make([]string, 200)
+	for i := range chunks {
+		chunks[i] = strings.Repeat("a", 2000)
+	}
+	got, usage, err := js.client().FilterChunks(context.Background(), Ask{Query: "q"}, chunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := int(js.calls.Load())
+	if calls < 2 {
+		t.Fatalf("expected the page to be split, got %d request(s)", calls)
+	}
+	for i, a := range got {
+		if a == nil || !a.Yes() {
+			t.Fatalf("chunk %d unanswered: %+v", i, a)
+		}
+	}
+	if usage.InputTokens != 10*calls {
+		t.Errorf("usage should accumulate across batches: %+v over %d calls", usage, calls)
+	}
+
+	// Every batch must fit the budget it was planned against.
+	req, _ := js.last()
+	if n := len(req.Questions); n > MaxChunksPerBatch {
+		t.Errorf("batch carried %d chunks, over the %d cap", n, MaxChunksPerBatch)
+	}
+}
+
+func TestPlanChunkBatchesRespectsBudget(t *testing.T) {
+	big := strings.Repeat("b", 2000)
+	chunks := make([]string, 50)
+	for i := range chunks {
+		chunks[i] = big
+	}
+	batches := planChunkBatches(chunks, 300)
+	if len(batches) < 2 {
+		t.Fatalf("expected several batches, got %d", len(batches))
+	}
+	covered := 0
+	for _, b := range batches {
+		if b.hi <= b.lo {
+			t.Fatalf("empty batch %+v", b)
+		}
+		if b.lo != covered {
+			t.Fatalf("batches must be contiguous: %+v after %d", b, covered)
+		}
+		covered = b.hi
+		if n := b.hi - b.lo; n > MaxChunksPerBatch {
+			t.Errorf("batch of %d exceeds cap %d", n, MaxChunksPerBatch)
+		}
+		est := 0
+		for i := b.lo; i < b.hi; i++ {
+			est += 2*estimateTokens(chunks[i]) + 300
+		}
+		if est > ChunkBatchTokenBudget && b.hi-b.lo > 1 {
+			t.Errorf("batch %+v estimated at %d tokens, over budget %d", b, est, ChunkBatchTokenBudget)
+		}
+	}
+	if covered != len(chunks) {
+		t.Errorf("batches covered %d of %d chunks", covered, len(chunks))
+	}
+}
+
+// A single chunk larger than the whole budget still has to be sent, not dropped.
+func TestPlanChunkBatchesOversizedSingleChunk(t *testing.T) {
+	batches := planChunkBatches([]string{strings.Repeat("c", 400000), "small"}, 300)
+	if len(batches) != 2 || batches[0] != (chunkBatch{0, 1}) || batches[1] != (chunkBatch{1, 2}) {
+		t.Errorf("batches = %+v", batches)
+	}
+}
+
+// Jev rejecting a batch for size should halve it rather than fail the page.
+func TestFilterChunksRetriesOversizedBatch(t *testing.T) {
+	var seen int
+	js := newJevServer(t, func(req SystemOneRequest) (int, any) {
+		seen++
+		if len(req.Questions) > 2 {
+			return 400, `{"detail":{"error_type":"max_tokens_exceeded"}}`
+		}
+		answers := map[string]Answer{}
+		for key := range req.Questions {
+			p := 0.9
+			answers[key] = Answer{Type: TypeNoul, Noul: &p}
+		}
+		return 200, SystemOneResponse{Answers: answers}
+	})
+	c := js.client()
+	c.NoRetry = true
+	chunks := []string{"one", "two", "three", "four"}
+	got, _, err := c.FilterChunks(context.Background(), Ask{Query: "q"}, chunks)
+	if err != nil {
+		t.Fatalf("splitting should recover: %v", err)
+	}
+	for i, a := range got {
+		if a == nil || !a.Yes() {
+			t.Fatalf("chunk %d unanswered after split: %+v", i, a)
+		}
+	}
+	if seen < 3 {
+		t.Errorf("expected an oversized attempt plus halves, got %d requests", seen)
+	}
+}
+
+// One failing batch must cost only its own chunks, and say which.
+func TestFilterChunksPartialFailure(t *testing.T) {
+	js := newJevServer(t, func(req SystemOneRequest) (int, any) {
+		// Fail whichever batch carries chunk_0; answer the rest.
+		if _, ok := req.Questions[ChunkKey(0)]; ok {
+			return 500, `boom`
+		}
+		answers := map[string]Answer{}
+		for key := range req.Questions {
+			p := 0.9
+			answers[key] = Answer{Type: TypeNoul, Noul: &p}
+		}
+		return 200, SystemOneResponse{Answers: answers}
+	})
+	c := js.client()
+	c.NoRetry = true
+	big := strings.Repeat("d", 2000)
+	chunks := make([]string, 60)
+	for i := range chunks {
+		chunks[i] = big
+	}
+	got, _, err := c.FilterChunks(context.Background(), Ask{Query: "q"}, chunks)
+
+	var partial *PartialFilterError
+	if !errors.As(err, &partial) {
+		t.Fatalf("want *PartialFilterError, got %v", err)
+	}
+	if partial.Failed == 0 || partial.Failed >= partial.Batches {
+		t.Errorf("partial = %+v", partial)
+	}
+	if len(partial.Unjudged) == 0 || partial.Unjudged[0] != 0 {
+		t.Errorf("unjudged should start at the failed batch: %v", partial.Unjudged)
+	}
+	for _, i := range partial.Unjudged {
+		if got[i] != nil {
+			t.Errorf("chunk %d reported unjudged but has an answer", i)
+		}
+	}
+	// Chunks outside the failed batch keep their verdicts.
+	var answered int
+	for _, a := range got {
+		if a != nil {
+			answered++
+		}
+	}
+	if answered == 0 {
+		t.Error("a single failed batch should not lose every verdict")
+	}
+	if !strings.Contains(partial.Error(), "unjudged") {
+		t.Errorf("error text = %q", partial.Error())
+	}
+}
+
+// Every batch failing is a plain error, not a partial one.
+func TestFilterChunksTotalFailure(t *testing.T) {
+	js := newJevServer(t, func(SystemOneRequest) (int, any) { return 500, `boom` })
+	c := js.client()
+	c.NoRetry = true
+	_, _, err := c.FilterChunks(context.Background(), Ask{Query: "q"}, []string{"x"})
+	if err == nil || !strings.Contains(err.Error(), "chunk filter") {
+		t.Fatalf("server error should propagate: %v", err)
+	}
+	var partial *PartialFilterError
+	if errors.As(err, &partial) {
+		t.Errorf("total failure should not be partial: %v", err)
+	}
+}
+
 func TestFilterChunksEdgeCases(t *testing.T) {
 	js := newJevServer(t, func(SystemOneRequest) (int, any) { return 500, `boom` })
 	c := js.client()
@@ -64,7 +249,24 @@ func TestFilterChunksEdgeCases(t *testing.T) {
 	if _, _, err := c.FilterChunks(context.Background(), Ask{Query: ""}, []string{"x"}); err == nil {
 		t.Error("empty query should error")
 	}
-	if _, _, err := c.FilterChunks(context.Background(), Ask{Query: "q"}, []string{"x"}); err == nil || !strings.Contains(err.Error(), "chunk filter") {
-		t.Errorf("server error should propagate: %v", err)
+}
+
+func TestTooLarge(t *testing.T) {
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{&APIError{Status: 400, Body: `{"detail":{"error_type":"max_tokens_exceeded"}}`}, true},
+		{&APIError{Status: 413, Body: "request too large"}, true},
+		{&APIError{Status: 400, Body: "context length exceeded"}, true},
+		{&APIError{Status: 400, Body: "bad question type"}, false},
+		{&APIError{Status: 500, Body: "max_tokens_exceeded"}, false},
+		{errors.New("network"), false},
+		{fmt.Errorf("wrapped: %w", &APIError{Status: 400, Body: "max_tokens_exceeded"}), true},
+	}
+	for _, tc := range cases {
+		if got := tooLarge(tc.err); got != tc.want {
+			t.Errorf("tooLarge(%v) = %v, want %v", tc.err, got, tc.want)
+		}
 	}
 }

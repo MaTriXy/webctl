@@ -16,7 +16,11 @@ Reddit: `www.reddit.com` answers with a JavaScript challenge page (HTTP 200, no 
 
 ## Chunk filtering
 
-Each page is split into chunks of about 2,000 characters on paragraph boundaries. One Jev batch request per page asks whether each chunk is worth quoting for the query; chunks with P(yes) ≥ 0.5 are kept and rejoined. Typical outcome: 20 to 30 percent of text removed (navigation, footers, tangents), themes fully retained. `--max-chars` caps text per page before chunking (default 50,000).
+Each page is split into chunks of about 2,000 characters on paragraph boundaries, and Jev is asked whether each chunk is worth quoting for the query; chunks with P(yes) ≥ 0.5 are kept and rejoined. Typical outcome: 20 to 30 percent of text removed (navigation, footers, tangents), themes fully retained. `--max-chars` caps text per page before chunking (default 50,000).
+
+Chunks are packed into batches that stay under an estimated-token budget and sent in parallel, so a long page does not become one request too large for Jev to accept. The budget accounts for each chunk being sent twice (once in the request state, once in its rendered question) plus the prompt boilerplate; a batch is capped at 24 chunks regardless. A batch Jev still rejects for size is halved and retried down to a single chunk.
+
+Failure is contained. If some batches fail, the chunks they covered are kept unfiltered rather than dropped — losing a verdict must never silently delete page content — and the run reports `k/n chunks kept, u unjudged` with `chunks_unjudged` in JSON. Only when every batch fails does the page fall back to its whole unfiltered text, reported as before.
 
 ## Output
 

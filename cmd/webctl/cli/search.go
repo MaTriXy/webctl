@@ -482,11 +482,14 @@ type pageContent struct {
 	// PDF is set when the page was a PDF; its text is always chunk-filtered.
 	PDF bool
 	// Filtered is set when --filter-chunks ran on this page. FilterErr
-	// records a Jev failure, in which case Content is the unfiltered text.
-	Filtered    bool
-	FilterErr   error
-	ChunksTotal int
-	ChunksKept  int
+	// records a Jev failure. When every batch failed, Content is the
+	// unfiltered text; when only some did, the chunks Jev never ruled on
+	// are kept alongside the ones it approved and ChunksUnjudged counts them.
+	Filtered       bool
+	FilterErr      error
+	ChunksTotal    int
+	ChunksKept     int
+	ChunksUnjudged int
 	// RawChars is the content length before chunk filtering.
 	RawChars int
 }
@@ -533,21 +536,40 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 	return out
 }
 
-// filterChunks splits pc.Content, asks Jev about every chunk in one request,
-// and reassembles the ones it says yes to.
+// filterChunks splits pc.Content, asks Jev about every chunk, and reassembles
+// the ones it says yes to. Jev failures degrade rather than abort: when only
+// some batches failed, the chunks they covered are kept unfiltered and the
+// rest are still filtered normally; only a total failure falls back to the
+// whole unfiltered page.
 func filterChunks(ctx context.Context, q qualifier, ask jev.Ask, pc *pageContent) {
 	chunks := scrape.Split(pc.Content, scrape.DefaultChunkChars)
 	pc.Filtered = true
 	pc.ChunksTotal = len(chunks)
 	answers, _, err := q.FilterChunks(ctx, ask, chunks)
+
+	var partial *jev.PartialFilterError
 	if err != nil {
 		pc.FilterErr = err
-		pc.ChunksKept = len(chunks)
-		return
+		if !errors.As(err, &partial) {
+			// Nothing was judged: keep the page whole rather than blank it.
+			pc.ChunksKept = len(chunks)
+			return
+		}
 	}
+
+	unjudged := make(map[int]bool, len(partialUnjudged(partial)))
+	for _, i := range partialUnjudged(partial) {
+		unjudged[i] = true
+	}
+
 	kept := make([]string, 0, len(chunks))
 	for i, c := range chunks {
-		if i < len(answers) && answers[i] != nil && answers[i].Yes() {
+		switch {
+		case unjudged[i]:
+			// Jev never ruled on this one; keeping it is the safe default.
+			kept = append(kept, c)
+			pc.ChunksUnjudged++
+		case i < len(answers) && answers[i] != nil && answers[i].Yes():
 			kept = append(kept, c)
 		}
 	}
@@ -555,11 +577,20 @@ func filterChunks(ctx context.Context, q qualifier, ask jev.Ask, pc *pageContent
 	pc.Content = scrape.Join(kept)
 }
 
+// partialUnjudged returns the unjudged chunk indices, or nil when there was
+// no partial failure.
+func partialUnjudged(e *jev.PartialFilterError) []int {
+	if e == nil {
+		return nil
+	}
+	return e.Unjudged
+}
+
 func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 	if opts.Format != formatPretty && !opts.Verbose {
 		return
 	}
-	var failed, fallback, rawChars, chars, total, kept, filterFailed int
+	var failed, fallback, rawChars, chars, total, kept, unjudged, filterFailed, filterPartial int
 	for _, p := range pages {
 		if p.Err != nil {
 			failed++
@@ -571,8 +602,13 @@ func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 		chars += len([]rune(p.Content))
 		total += p.ChunksTotal
 		kept += p.ChunksKept
+		unjudged += p.ChunksUnjudged
 		if p.FilterErr != nil {
-			filterFailed++
+			if p.ChunksUnjudged > 0 {
+				filterPartial++
+			} else {
+				filterFailed++
+			}
 		}
 	}
 	fmt.Fprintf(w, "scraped %d page(s)", len(pages))
@@ -587,6 +623,9 @@ func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 		fmt.Fprintf(w, "; chunks %d → %d kept; %d → %d chars", total, kept, rawChars, chars)
 		if filterFailed > 0 {
 			fmt.Fprintf(w, "; %d page(s) unfiltered (Jev error)", filterFailed)
+		}
+		if filterPartial > 0 {
+			fmt.Fprintf(w, "; %d page(s) partly filtered (%d chunk(s) unjudged, kept)", filterPartial, unjudged)
 		}
 	} else {
 		fmt.Fprintf(w, ", %d chars", chars)
@@ -829,9 +868,10 @@ type outputResult struct {
 	ScrapeError string `json:"scrape_error,omitempty"`
 	PDF         *bool  `json:"pdf,omitempty"`
 	// --filter-chunks fields.
-	ChunksTotal *int   `json:"chunks_total,omitempty"`
-	ChunksKept  *int   `json:"chunks_kept,omitempty"`
-	FilterError string `json:"filter_error,omitempty"`
+	ChunksTotal    *int   `json:"chunks_total,omitempty"`
+	ChunksKept     *int   `json:"chunks_kept,omitempty"`
+	ChunksUnjudged *int   `json:"chunks_unjudged,omitempty"`
+	FilterError    string `json:"filter_error,omitempty"`
 }
 
 // fillPage copies scraped content into the JSON fields.
@@ -839,12 +879,12 @@ func (o *outputResult) fillPage(p *pageContent) {
 	if p == nil {
 		return
 	}
-	o.Content, o.ScrapeError, o.ChunksTotal, o.ChunksKept, o.FilterError = pageFields(p)
+	o.Content, o.ScrapeError, o.ChunksTotal, o.ChunksKept, o.ChunksUnjudged, o.FilterError = pageFields(p)
 	o.PDF = pdfFlag(p)
 }
 
 // pageFields flattens a pageContent into the shared JSON field values.
-func pageFields(p *pageContent) (content, scrapeErr string, total, kept *int, filterErr string) {
+func pageFields(p *pageContent) (content, scrapeErr string, total, kept, unjudged *int, filterErr string) {
 	content = p.Content
 	if p.Err != nil {
 		scrapeErr = p.Err.Error()
@@ -856,10 +896,14 @@ func pageFields(p *pageContent) (content, scrapeErr string, total, kept *int, fi
 		t, k := p.ChunksTotal, p.ChunksKept
 		total, kept = &t, &k
 	}
+	if p.ChunksUnjudged > 0 {
+		u := p.ChunksUnjudged
+		unjudged = &u
+	}
 	if p.FilterErr != nil {
 		filterErr = p.FilterErr.Error()
 	}
-	return content, scrapeErr, total, kept, filterErr
+	return content, scrapeErr, total, kept, unjudged, filterErr
 }
 
 // pdfFlag returns a pointer to true for PDF pages, nil otherwise, so the
@@ -915,19 +959,20 @@ type rawResult struct {
 
 	Page *pageContent `json:"-"`
 	// --scrape / --filter-chunks fields, filled from Page before encoding.
-	Content     string `json:"content,omitempty"`
-	ScrapeError string `json:"scrape_error,omitempty"`
-	PDF         *bool  `json:"pdf,omitempty"`
-	ChunksTotal *int   `json:"chunks_total,omitempty"`
-	ChunksKept  *int   `json:"chunks_kept,omitempty"`
-	FilterError string `json:"filter_error,omitempty"`
+	Content        string `json:"content,omitempty"`
+	ScrapeError    string `json:"scrape_error,omitempty"`
+	PDF            *bool  `json:"pdf,omitempty"`
+	ChunksTotal    *int   `json:"chunks_total,omitempty"`
+	ChunksKept     *int   `json:"chunks_kept,omitempty"`
+	ChunksUnjudged *int   `json:"chunks_unjudged,omitempty"`
+	FilterError    string `json:"filter_error,omitempty"`
 }
 
 func (r *rawResult) fillPage() {
 	if r.Page == nil {
 		return
 	}
-	r.Content, r.ScrapeError, r.ChunksTotal, r.ChunksKept, r.FilterError = pageFields(r.Page)
+	r.Content, r.ScrapeError, r.ChunksTotal, r.ChunksKept, r.ChunksUnjudged, r.FilterError = pageFields(r.Page)
 	r.PDF = pdfFlag(r.Page)
 }
 
@@ -981,13 +1026,19 @@ func writeContent(w io.Writer, p *pageContent) {
 		fmt.Fprintln(w, "    (showing the provider's excerpt instead)")
 	}
 	if p.FilterErr != nil {
-		fmt.Fprintf(w, "    ! chunk filter failed: %v (showing unfiltered content)\n", p.FilterErr)
+		if p.ChunksUnjudged > 0 {
+			fmt.Fprintf(w, "    ! chunk filter partly failed: %v\n", p.FilterErr)
+		} else {
+			fmt.Fprintf(w, "    ! chunk filter failed: %v (showing unfiltered content)\n", p.FilterErr)
+		}
 	}
 	kind := "content"
 	if p.PDF {
 		kind = "PDF text"
 	}
 	switch {
+	case p.Filtered && p.ChunksUnjudged > 0:
+		fmt.Fprintf(w, "    --- %s (%d/%d chunks kept, %d unjudged, %d chars) ---\n", kind, p.ChunksKept, p.ChunksTotal, p.ChunksUnjudged, len([]rune(p.Content)))
 	case p.Filtered && p.FilterErr == nil:
 		fmt.Fprintf(w, "    --- %s (%d/%d chunks kept, %d chars) ---\n", kind, p.ChunksKept, p.ChunksTotal, len([]rune(p.Content)))
 	default:
