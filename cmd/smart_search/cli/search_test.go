@@ -644,16 +644,17 @@ func TestSearchChainFallsBackOnFailure(t *testing.T) {
 	h.provs = map[string]*fakeProvider{
 		"exa":      {err: errors.New("exa is down")},
 		"parallel": {err: errors.New("parallel is down")},
+		"youcom":   {err: errors.New("youcom is down")},
 		"ddg":      {results: []provider.SearchResult{paper}},
 	}
 	out, errOut, err := h.run("q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(h.built, ",") != "exa,parallel,ddg" {
-		t.Errorf("chain order = %v, want exa,parallel,ddg", h.built)
+	if strings.Join(h.built, ",") != "exa,parallel,youcom,ddg" {
+		t.Errorf("chain order = %v, want exa,parallel,youcom,ddg", h.built)
 	}
-	if !strings.Contains(errOut, "exa failed (exa is down); trying parallel") || !strings.Contains(errOut, "parallel failed (parallel is down); trying ddg") {
+	if !strings.Contains(errOut, "exa failed (exa is down); trying parallel") || !strings.Contains(errOut, "youcom failed (youcom is down); trying ddg") {
 		t.Errorf("fallback notice missing: %q", errOut)
 	}
 	if !strings.Contains(errOut, "ddg: 1 results → 1 kept") {
@@ -668,10 +669,10 @@ func TestSearchChainAllFail(t *testing.T) {
 	h := newHarness(t, keys.Store{ExaAPIKey: "e", SearXNGURL: "http://sx", JevAPIKey: "j"})
 	h.prov.err = errors.New("boom")
 	_, _, err := h.run("q")
-	if err == nil || !strings.Contains(err.Error(), "all 4 providers failed") || !strings.Contains(err.Error(), "boom") {
+	if err == nil || !strings.Contains(err.Error(), "all 5 providers failed") || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("err = %v", err)
 	}
-	if strings.Join(h.built, ",") != "exa,parallel,ddg,searxng" {
+	if strings.Join(h.built, ",") != "exa,parallel,youcom,ddg,searxng" {
 		t.Errorf("chain order = %v", h.built)
 	}
 }
@@ -690,8 +691,9 @@ func TestSearchZeroConfigUsesDDG(t *testing.T) {
 	h.provs = map[string]*fakeProvider{
 		"exa":      {err: errors.New("quota")},
 		"parallel": {err: errors.New("quota")},
+		"youcom":   {err: errors.New("quota")},
 	}
-	if _, _, err := h.run("--no-filter", "--urls-only", "q"); err != nil || strings.Join(h.built, ",") != "exa,parallel,ddg" {
+	if _, _, err := h.run("--no-filter", "--urls-only", "q"); err != nil || strings.Join(h.built, ",") != "exa,parallel,youcom,ddg" {
 		t.Errorf("zero-config fallback: %v, built = %v", err, h.built)
 	}
 
@@ -723,6 +725,7 @@ func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
 	h.provs = map[string]*fakeProvider{
 		"exa":      {results: []provider.SearchResult{blog, paper}},
 		"parallel": {err: errors.New("quota")},
+		"youcom":   {err: errors.New("quota")},
 		"ddg":      {results: []provider.SearchResult{paper, wiki}},
 	}
 	out, _, err := h.run("--multi", "--no-filter", "--json", "q")
@@ -747,6 +750,7 @@ func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
 	h.provs = map[string]*fakeProvider{
 		"exa":      {results: []provider.SearchResult{blog, paper}},
 		"parallel": {err: errors.New("quota")},
+		"youcom":   {err: errors.New("quota")},
 		"ddg":      {results: []provider.SearchResult{paper, wiki}},
 	}
 	out, errOut, err := h.run("--multi", "--json", "--verbose", "q")
@@ -774,6 +778,7 @@ func TestSearchMultiPartialFailureAndCap(t *testing.T) {
 	h.provs = map[string]*fakeProvider{
 		"exa":      {err: errors.New("quota")},
 		"parallel": {err: errors.New("quota")},
+		"youcom":   {err: errors.New("quota")},
 		"ddg":      {results: []provider.SearchResult{paper, wiki, blog}},
 	}
 	out, errOut, err := h.run("--multi", "--no-filter", "--urls-only", "-n", "2", "q")
@@ -789,7 +794,7 @@ func TestSearchMultiPartialFailureAndCap(t *testing.T) {
 
 	h.provs["ddg"].err = errors.New("blocked")
 	_, _, err = h.run("--multi", "--no-filter", "q")
-	if err == nil || !strings.Contains(err.Error(), "all 3 providers failed") || !strings.Contains(err.Error(), "blocked") {
+	if err == nil || !strings.Contains(err.Error(), "all 4 providers failed") || !strings.Contains(err.Error(), "blocked") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -808,6 +813,7 @@ func TestSearchRandomFallsBack(t *testing.T) {
 	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
 	h.provs = map[string]*fakeProvider{
 		"ddg":      {err: errors.New("blocked")},
+		"youcom":   {err: errors.New("blocked")},
 		"parallel": {err: errors.New("blocked")},
 		"exa":      {results: []provider.SearchResult{paper}},
 	}
@@ -815,10 +821,10 @@ func TestSearchRandomFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(h.built, ",") != "ddg,parallel,exa" {
-		t.Errorf("random order = %v, want reversed chain ddg,parallel,exa", h.built)
+	if strings.Join(h.built, ",") != "ddg,youcom,parallel,exa" {
+		t.Errorf("random order = %v, want reversed chain ddg,youcom,parallel,exa", h.built)
 	}
-	if !strings.Contains(errOut, "ddg failed (blocked); trying parallel") || !strings.Contains(errOut, "parallel failed (blocked); trying exa") {
+	if !strings.Contains(errOut, "ddg failed (blocked); trying youcom") || !strings.Contains(errOut, "parallel failed (blocked); trying exa") {
 		t.Errorf("stderr = %q", errOut)
 	}
 }
@@ -1075,6 +1081,7 @@ func TestSearchChainTimesOutSlowProvider(t *testing.T) {
 		"exa":      {hang: true},
 		"parallel": {results: []provider.SearchResult{paper}},
 	}
+	h.provs["youcom"] = &fakeProvider{results: []provider.SearchResult{paper}}
 	start := time.Now()
 	_, errOut, err := h.run("--no-filter", "--urls-only", "q")
 	if err != nil {
@@ -1090,7 +1097,7 @@ func TestSearchChainTimesOutSlowProvider(t *testing.T) {
 	// Every provider hanging exhausts the chain budget rather than the sum of attempts.
 	attemptTimeout, chainBudget = time.Second, 50*time.Millisecond
 	h = newHarness(t, keys.Store{})
-	h.provs = map[string]*fakeProvider{"exa": {hang: true}, "parallel": {hang: true}, "ddg": {hang: true}}
+	h.provs = map[string]*fakeProvider{"exa": {hang: true}, "parallel": {hang: true}, "youcom": {hang: true}, "ddg": {hang: true}}
 	start = time.Now()
 	_, _, err = h.run("--no-filter", "--urls-only", "q")
 	if err == nil || !strings.Contains(err.Error(), "chain budget") {

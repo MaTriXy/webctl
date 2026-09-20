@@ -41,6 +41,7 @@ func newEvalCmd() *cobra.Command {
 		parallel  int
 		dbPath    string
 		notes     string
+		fresh     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "eval [case-name ...]",
@@ -55,6 +56,8 @@ Each stage records what it would deliver (results, characters, junk-domain
 hits) and asks Jev in one batch request whether that delivery covers the
 case's expected themes. A case passes when its filter stage passes. Every
 stage is stored in a SQLite database tagged with the smart_search version.
+Provider results are cached in that database for 24h so repeated runs
+judge identical inputs; --fresh searches again.
 
 Cases are YAML files embedded from evals/cases/, or a directory given with
 --cases. See evals/README.md for the case format.`,
@@ -131,6 +134,9 @@ Cases are YAML files embedded from evals/cases/, or a directory given with
 				if err != nil {
 					return err
 				}
+				if !fresh {
+					runner.SearchCache = db
+				}
 			}
 
 			if !jsonOut {
@@ -191,6 +197,7 @@ Cases are YAML files embedded from evals/cases/, or a directory given with
 	f.IntVar(&parallel, "parallel", 2, "cases to run concurrently (keyless search tiers throttle above this)")
 	f.StringVar(&dbPath, "db", defaultEvalDB, "SQLite file to store results in (empty to skip)")
 	f.StringVar(&notes, "notes", "", "free-text note stored on the run")
+	f.BoolVar(&fresh, "fresh", false, "ignore cached provider results (default: results under 24h old from the db are reused so runs judge identical inputs)")
 	cmd.AddCommand(newEvalReportCmd())
 	return cmd
 }

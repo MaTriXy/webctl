@@ -52,7 +52,7 @@ const SonarTimeout = 90 * time.Second
 
 // Names returns the supported provider names in auto-chain order: keyed
 // providers first, then the keyless fallbacks.
-func Names() []string { return []string{"exa", "parallel", "sonar", "ddg", "searxng"} }
+func Names() []string { return []string{"exa", "parallel", "sonar", "youcom", "ddg", "searxng"} }
 
 // Keyed lists the providers that require an API key.
 func Keyed() []string { return []string{"exa", "parallel", "sonar"} }
@@ -65,6 +65,8 @@ func Normalize(name string) string {
 		return "sonar"
 	case "duckduckgo":
 		return "ddg"
+	case "you", "you.com":
+		return "youcom"
 	}
 	return name
 }
@@ -73,7 +75,7 @@ func Normalize(name string) string {
 // Exa and Parallel fall back to their hosted MCP endpoints without one.
 func Keyless(name string) bool {
 	switch Normalize(name) {
-	case "ddg", "searxng", "exa", "parallel":
+	case "ddg", "searxng", "exa", "parallel", "youcom":
 		return true
 	}
 	return false
@@ -95,6 +97,8 @@ func New(name, cred string, opts Options) (Provider, error) {
 		return NewExa(cred, opts), nil
 	case "parallel":
 		return NewParallel(cred, opts), nil
+	case "youcom":
+		return NewYoucom(cred, opts), nil
 	}
 	if cred == "" {
 		return nil, fmt.Errorf("%s: API key is empty", name)

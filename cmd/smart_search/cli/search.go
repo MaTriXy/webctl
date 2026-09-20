@@ -44,7 +44,7 @@ var sf searchFlags
 
 func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, sonar, ddg, or searxng (default: auto — keyed providers with a key, then keyless exa and parallel, then ddg, then searxng)")
+	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, sonar, youcom, ddg, or searxng (default: auto — keyed providers with a key, then keyless exa, parallel, and youcom, then ddg, then searxng)")
 	f.IntVarP(&sf.num, "num", "n", 0, "number of results to request from the provider (default 10)")
 	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "minimum Jev relevance score to keep a result (default: one below the rubric's top, i.e. 2.0 on the 0–3 scale; with --noul, minimum P(yes), default 0.5)")
 	f.BoolVar(&sf.jsonOut, "json", false, "emit results as JSON")

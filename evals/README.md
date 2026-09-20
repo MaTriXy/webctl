@@ -36,6 +36,11 @@ go build -o smart_search ./cmd/smart_search
 
 The command exits non-zero if any case fails or errors.
 
+Provider results are cached in the results database for 24 hours, so a
+second run judges exactly the same inputs as the first (and spares the
+keyless search tiers, which throttle after a few dozen calls). Pass
+`--fresh` to search again.
+
 ## Results database
 
 Every run is stored in `evals/results.db` (SQLite; `--db` changes the path,

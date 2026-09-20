@@ -35,6 +35,11 @@ type mcpResponse struct {
 // blocks of the result. Transport failures never include the URL, since a key
 // may be carried in its query string.
 func callMCPTool(ctx context.Context, client *http.Client, providerName, endpoint, tool string, args map[string]any) ([]string, error) {
+	return callMCPToolWithHeaders(ctx, client, providerName, endpoint, tool, args, nil)
+}
+
+// callMCPToolWithHeaders is callMCPTool with extra request headers.
+func callMCPToolWithHeaders(ctx context.Context, client *http.Client, providerName, endpoint, tool string, args map[string]any, headers map[string]string) ([]string, error) {
 	payload, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -51,6 +56,9 @@ func callMCPTool(ctx context.Context, client *http.Client, providerName, endpoin
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("User-Agent", "smart_search/1.0 (+https://github.com/dorkitude/smart_search)")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/dorkitude/smart_search/internal/provider"
 )
 
 // DB stores eval runs in SQLite. Every row carries the smart_search
@@ -62,6 +64,14 @@ CREATE TABLE IF NOT EXISTS results (
 	judged        TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS results_version_case ON results(version, "case", mode);
+CREATE TABLE IF NOT EXISTS search_cache (
+	query      TEXT NOT NULL,
+	num        INTEGER NOT NULL,
+	provider   TEXT NOT NULL DEFAULT '',
+	fetched_at TEXT NOT NULL,
+	results    TEXT NOT NULL,
+	PRIMARY KEY (query, num)
+);
 `
 
 // OpenDB opens (creating if needed) the results database at path.
@@ -148,6 +158,39 @@ func (d *DB) RecordReport(ctx context.Context, runID int64, rep *Report) error {
 		}
 	}
 	return nil
+}
+
+// CachedSearch returns the stored results for (query, num) if they were
+// fetched within maxAge, with the provider that produced them.
+func (d *DB) CachedSearch(ctx context.Context, query string, num int, maxAge time.Duration) ([]provider.SearchResult, string, bool, error) {
+	var raw, prov, fetched string
+	err := d.sql.QueryRowContext(ctx, `SELECT results, provider, fetched_at FROM search_cache WHERE query = ? AND num = ?`, query, num).Scan(&raw, &prov, &fetched)
+	if err == sql.ErrNoRows {
+		return nil, "", false, nil
+	}
+	if err != nil {
+		return nil, "", false, err
+	}
+	at, err := time.Parse(time.RFC3339, fetched)
+	if err != nil || time.Since(at) > maxAge {
+		return nil, "", false, nil
+	}
+	var results []provider.SearchResult
+	if err := json.Unmarshal([]byte(raw), &results); err != nil {
+		return nil, "", false, err
+	}
+	return results, prov, true, nil
+}
+
+// StoreSearch records results for (query, num), replacing any older entry.
+func (d *DB) StoreSearch(ctx context.Context, query string, num int, prov string, results []provider.SearchResult) error {
+	raw, err := json.Marshal(results)
+	if err != nil {
+		return err
+	}
+	_, err = d.sql.ExecContext(ctx, `INSERT OR REPLACE INTO search_cache (query, num, provider, fetched_at, results) VALUES (?, ?, ?, ?, ?)`,
+		query, num, prov, time.Now().UTC().Format(time.RFC3339), string(raw))
+	return err
 }
 
 func boolInt(b bool) int {

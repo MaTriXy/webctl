@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -44,12 +45,28 @@ func IsUnauthorized(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.Unauthorized()
 }
 
+// Connection limits: a host that does not answer the TCP or TLS handshake
+// is given up on quickly, so a dead provider costs seconds, not the whole
+// request timeout.
+const (
+	dialTimeout         = 3 * time.Second
+	tlsHandshakeTimeout = 5 * time.Second
+)
+
 // newHTTPClient returns opts.HTTPClient or a fresh client with the given timeout.
 func newHTTPClient(opts Options, timeout time.Duration) *http.Client {
 	if opts.HTTPClient != nil {
 		return opts.HTTPClient
 	}
-	return &http.Client{Timeout: timeout}
+	return &http.Client{Timeout: timeout, Transport: newTransport()}
+}
+
+// newTransport is http.DefaultTransport with short connect timeouts.
+func newTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DialContext = (&net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}).DialContext
+	t.TLSHandshakeTimeout = tlsHandshakeTimeout
+	return t
 }
 
 // postJSON marshals body, POSTs it, and decodes a 2xx JSON response into out.

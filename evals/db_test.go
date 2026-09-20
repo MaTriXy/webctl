@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dorkitude/smart_search/internal/jev"
+	"github.com/dorkitude/smart_search/internal/provider"
 )
 
 func TestDBRoundTrip(t *testing.T) {
@@ -58,5 +59,31 @@ func TestDBRoundTrip(t *testing.T) {
 	}
 	if rows[0].Case != "broken" || rows[0].Error != "search: down" || rows[3].Mode != ModeScrape || rows[3].Failures != "theme x" {
 		t.Errorf("rows = %+v", rows)
+	}
+}
+
+func TestSearchCacheRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db, err := OpenDB(filepath.Join(t.TempDir(), "results.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, _, ok, err := db.CachedSearch(ctx, "q", 10, time.Hour); ok || err != nil {
+		t.Fatalf("empty cache: %v %v", ok, err)
+	}
+	want := []provider.SearchResult{{Title: "t", URL: "https://x", Snippet: "s", Content: "c"}}
+	if err := db.StoreSearch(ctx, "q", 10, "exa", want); err != nil {
+		t.Fatal(err)
+	}
+	got, prov, ok, err := db.CachedSearch(ctx, "q", 10, time.Hour)
+	if err != nil || !ok || prov != "exa" || len(got) != 1 || got[0].Content != "c" {
+		t.Errorf("cached = %+v %q %v %v", got, prov, ok, err)
+	}
+	if _, _, ok, _ := db.CachedSearch(ctx, "q", 20, time.Hour); ok {
+		t.Error("a different num is a different entry")
+	}
+	if _, _, ok, _ := db.CachedSearch(ctx, "q", 10, 0); ok {
+		t.Error("a zero max age is always stale")
 	}
 }

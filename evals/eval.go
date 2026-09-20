@@ -230,7 +230,19 @@ type Runner struct {
 	// Audit runs the source-quality audit on raw results (one extra Jev
 	// batch call per case) so stages can count flagged pages.
 	Audit bool
+	// SearchCache, when set, serves and records provider results so that
+	// repeated runs judge identical inputs and spare the search tiers.
+	SearchCache SearchCache
 }
+
+// SearchCache stores provider results per (query, num).
+type SearchCache interface {
+	CachedSearch(ctx context.Context, query string, num int, maxAge time.Duration) ([]provider.SearchResult, string, bool, error)
+	StoreSearch(ctx context.Context, query string, num int, prov string, results []provider.SearchResult) error
+}
+
+// SearchCacheMaxAge is how long cached provider results stay fresh.
+const SearchCacheMaxAge = 24 * time.Hour
 
 // Mode is one evaluation stage.
 type Mode string
@@ -388,21 +400,39 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 	if r.Provider != "" {
 		providerName = r.Provider
 	}
-	p, err := r.NewProvider(providerName)
-	if err != nil {
-		return fail(err)
-	}
-	rep.Provider = p.Name()
-
 	num := c.Num
 	if num <= 0 {
 		num = 10
 	}
-	searchStart := time.Now()
-	results, err := p.Search(ctx, c.Query, num)
-	rep.SearchDuration = time.Since(searchStart)
-	if err != nil {
-		return fail(fmt.Errorf("search: %w", err))
+	var results []provider.SearchResult
+	cached := false
+	if r.SearchCache != nil {
+		var prov string
+		var err error
+		if results, prov, cached, err = r.SearchCache.CachedSearch(ctx, c.Query, num, SearchCacheMaxAge); err != nil {
+			return fail(fmt.Errorf("search cache: %w", err))
+		}
+		if cached {
+			rep.Provider = prov + " (cached)"
+		}
+	}
+	if !cached {
+		p, err := r.NewProvider(providerName)
+		if err != nil {
+			return fail(err)
+		}
+		searchStart := time.Now()
+		results, err = p.Search(ctx, c.Query, num)
+		rep.SearchDuration = time.Since(searchStart)
+		if err != nil {
+			return fail(fmt.Errorf("search: %w", err))
+		}
+		rep.Provider = p.Name()
+		if r.SearchCache != nil {
+			if err := r.SearchCache.StoreSearch(ctx, c.Query, num, p.Name(), results); err != nil {
+				return fail(fmt.Errorf("search cache: %w", err))
+			}
+		}
 	}
 	results = provider.Dedupe(results)
 	rep.TotalResults = len(results)
@@ -412,6 +442,7 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 	flagged := map[string]bool{}
 	if r.Audit {
 		var usage jev.Usage
+		var err error
 		if flagged, usage, err = r.audit(ctx, c.Query, results); err != nil {
 			rep.AuditError = err.Error()
 		}

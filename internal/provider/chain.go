@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -44,6 +45,38 @@ const (
 	topUpTimeout  = 4 * time.Second
 )
 
+// rateLimitCooldown is how long a provider that answered 429 is skipped by
+// every Chain in this process. Free tiers meter by the minute; asking again
+// sooner only spends a request and a fall-through.
+const rateLimitCooldown = 90 * time.Second
+
+var (
+	cooldownMu    sync.Mutex
+	cooldownUntil = map[string]time.Time{}
+	now           = time.Now
+)
+
+// coolingDown reports whether name answered 429 recently.
+func coolingDown(name string) bool {
+	cooldownMu.Lock()
+	defer cooldownMu.Unlock()
+	return now().Before(cooldownUntil[name])
+}
+
+// noteRateLimit starts the cooldown for name if err is a 429.
+func noteRateLimit(name string, err error) {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != 429 {
+		return
+	}
+	cooldownMu.Lock()
+	cooldownUntil[name] = now().Add(rateLimitCooldown)
+	cooldownMu.Unlock()
+}
+
+// errCoolingDown marks a provider skipped because of a recent 429.
+var errCoolingDown = errors.New("rate limited recently; skipped")
+
 // Name returns the provider that answered the last search, or the first
 // name before any search.
 func (c *Chain) Name() string {
@@ -76,12 +109,17 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 	var errs []error
 	for i, name := range c.Names {
 		last := i+1 == len(c.Names)
-		p, err := c.New(name)
+		var p Provider
+		err := errCoolingDown
+		if !coolingDown(name) {
+			p, err = c.New(name)
+		}
 		if err == nil {
 			var results []SearchResult
 			attemptCtx, cancel := context.WithTimeout(chainCtx, attempt)
 			results, err = p.Search(attemptCtx, query, numResults)
 			cancel()
+			noteRateLimit(name, err)
 			if err == nil && (len(results) > 0 || last) {
 				c.answered = p.Name()
 				if !last && !c.NoTopUp && len(results) < int(float64(numResults)*topUpFraction) {
@@ -116,6 +154,9 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 // as it was. The fused engine names become the chain's Name.
 func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, query string, numResults int, first Ranked) []SearchResult {
 	for _, name := range c.Names[from:] {
+		if coolingDown(name) {
+			continue
+		}
 		p, err := c.New(name)
 		if err != nil {
 			continue
@@ -123,6 +164,7 @@ func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, quer
 		attemptCtx, cancel := context.WithTimeout(ctx, min(attempt, topUpTimeout))
 		more, err := p.Search(attemptCtx, query, numResults)
 		cancel()
+		noteRateLimit(name, err)
 		if err != nil || len(more) == 0 {
 			continue
 		}

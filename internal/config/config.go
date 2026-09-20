@@ -246,6 +246,7 @@ func (c *Config) Chain(explicit string) ([]string, error) {
 	}
 	add("exa")
 	add("parallel")
+	add("youcom")
 	add("ddg")
 	if c.Usable("searxng") {
 		add("searxng")
