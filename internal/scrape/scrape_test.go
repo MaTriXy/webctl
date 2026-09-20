@@ -91,8 +91,8 @@ func TestFetchPlainTextAndErrors(t *testing.T) {
 	if got, err := f.Fetch(context.Background(), srv.URL+"/text"); err != nil || got != "line one\n\nline two" {
 		t.Errorf("text = %q, %v", got, err)
 	}
-	if _, err := f.Fetch(context.Background(), srv.URL+"/pdf"); err == nil || !strings.Contains(err.Error(), "unsupported content type") {
-		t.Errorf("pdf err = %v", err)
+	if _, err := f.Fetch(context.Background(), srv.URL+"/pdf"); err == nil || !strings.Contains(err.Error(), "PDF") {
+		t.Errorf("truncated pdf err = %v", err)
 	}
 	if _, err := f.Fetch(context.Background(), srv.URL+"/missing"); err == nil || !strings.Contains(err.Error(), "HTTP 404") {
 		t.Errorf("404 err = %v", err)

@@ -46,6 +46,8 @@ type Page struct {
 	URL     string
 	Content string
 	Err     error
+	// PDF is set when the page was a PDF and Content is its text layer.
+	PDF bool
 }
 
 func (f *Fetcher) client() *http.Client {
@@ -67,39 +69,50 @@ func (f *Fetcher) maxChars() int {
 }
 
 // Fetch downloads url and returns its text content, truncated to MaxChars.
-// HTML is converted to text; plain text is passed through; other content
-// types are rejected. A Reddit challenge page is solved and the real page
-// fetched in its place.
+// HTML is converted to text; plain text is passed through; PDFs yield their
+// text layer; other content types are rejected. A Reddit challenge page is
+// solved and the real page fetched in its place.
 func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
+	text, _, err := f.FetchPage(ctx, url)
+	return text, err
+}
+
+// FetchPage is Fetch plus whether the page was a PDF.
+func (f *Fetcher) FetchPage(ctx context.Context, url string) (string, bool, error) {
 	mediaType, body, err := f.get(ctx, url)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if isHTML(mediaType) && isRedditChallenge(body) {
 		u, err := f.solveURL(url, body)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		if mediaType, body, err = f.get(ctx, u); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 
 	var text string
+	isPDF := IsPDF(mediaType, body)
 	switch {
+	case isPDF:
+		if text, err = PDFToText(body); err != nil {
+			return "", true, err
+		}
 	case isHTML(mediaType):
 		if text, err = HTMLToText(bytes.NewReader(body)); err != nil {
-			return "", err
+			return "", false, err
 		}
 	case strings.HasPrefix(mediaType, "text/"), mediaType == "application/json":
 		text = normalizeText(string(body))
 	default:
-		return "", fmt.Errorf("unsupported content type %q", mediaType)
+		return "", false, fmt.Errorf("unsupported content type %q", mediaType)
 	}
 	if text == "" {
-		return "", errors.New("no text content")
+		return "", isPDF, errors.New("no text content")
 	}
-	return Truncate(text, f.maxChars()), nil
+	return Truncate(text, f.maxChars()), isPDF, nil
 }
 
 // get performs one GET and returns the response media type and body
@@ -110,7 +123,7 @@ func (f *Fetcher) get(ctx context.Context, url string) (string, []byte, error) {
 		return "", nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.5")
 
 	resp, err := f.client().Do(req)
 	if err != nil {
@@ -161,7 +174,7 @@ func (f *Fetcher) FetchAll(ctx context.Context, urls []string, concurrency int) 
 		go func(i int, u string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			pages[i].Content, pages[i].Err = f.Fetch(ctx, u)
+			pages[i].Content, pages[i].PDF, pages[i].Err = f.FetchPage(ctx, u)
 		}(i, u)
 	}
 	wg.Wait()

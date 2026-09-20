@@ -854,6 +854,7 @@ func TestSearchModeFlagConflicts(t *testing.T) {
 type fakeScraper struct {
 	pages    map[string]string // URL → content
 	errs     map[string]error  // URL → error
+	pdfs     map[string]bool   // URL → served as a PDF
 	gotURLs  []string
 	maxChars int
 }
@@ -862,7 +863,7 @@ func (f *fakeScraper) FetchAll(_ context.Context, urls []string, _ int) []scrape
 	f.gotURLs = append(f.gotURLs, urls...)
 	out := make([]scrape.Page, len(urls))
 	for i, u := range urls {
-		out[i] = scrape.Page{URL: u, Content: f.pages[u], Err: f.errs[u]}
+		out[i] = scrape.Page{URL: u, Content: f.pages[u], Err: f.errs[u], PDF: f.pdfs[u]}
 	}
 	return out
 }
@@ -1157,5 +1158,49 @@ func TestSearchFoldsDuplicates(t *testing.T) {
 	}
 	if items := mustJSON[[]outputResult](t, out); len(items) != 3 {
 		t.Errorf("no-dedupe items = %d", len(items))
+	}
+}
+
+func TestSearchScrapeAlwaysChunksPDFs(t *testing.T) {
+	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	long := strings.Repeat("A paragraph of the paper's text that is long enough to become its own chunk when split. ", 40)
+	fs := &fakeScraper{
+		pages: map[string]string{paper.URL: long, wiki.URL: long},
+		pdfs:  map[string]bool{paper.URL: true},
+	}
+	orig := newScraper
+	newScraper = func(int) scraper { return fs }
+	t.Cleanup(func() { newScraper = orig })
+	h.qual.relevantWord = "paragraph"
+
+	// No --filter-chunks: the PDF is chunk-filtered anyway, the HTML page is not.
+	out, errOut, err := h.run("--scrape", "--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	byURL := map[string]outputResult{}
+	for _, it := range items {
+		byURL[it.URL] = it
+	}
+	pdf, html := byURL[paper.URL], byURL[wiki.URL]
+	if pdf.PDF == nil || !*pdf.PDF || pdf.ChunksTotal == nil || *pdf.ChunksTotal == 0 {
+		t.Errorf("pdf result should be flagged and chunk-filtered: %+v", pdf)
+	}
+	if html.PDF != nil || html.ChunksTotal != nil {
+		t.Errorf("html result should be untouched without --filter-chunks: %+v", html)
+	}
+	if !strings.Contains(errOut, "chunks") {
+		t.Errorf("summary should mention chunks: %q", errOut)
+	}
+	// --no-filter has no Jev: the PDF text is delivered whole.
+	out, _, err = h.run("--scrape", "--no-filter", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range mustJSON[[]rawResult](t, out) {
+		if it.URL == paper.URL && (it.PDF == nil || it.ChunksTotal != nil) {
+			t.Errorf("no-filter pdf = %+v", it)
+		}
 	}
 }

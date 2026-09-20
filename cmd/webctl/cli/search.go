@@ -358,9 +358,11 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 			return err
 		}
 	}
-	// chunkFilter is non-nil only when --filter-chunks needs Jev.
+	// chunkFilter is available whenever a Jev key is: --filter-chunks uses
+	// it on every page, and PDFs are always chunked through it because a
+	// paper's text layer is far too long to hand over whole.
 	var chunkFilter qualifier
-	if opts.FilterChunks {
+	if opts.Scrape && jevKey != "" {
 		chunkFilter = newQualifier(cfg, jevKey)
 	}
 
@@ -461,6 +463,8 @@ type pageContent struct {
 	// Fallback is set when Content is the provider's excerpt because the
 	// page could not be fetched.
 	Fallback bool
+	// PDF is set when the page was a PDF; its text is always chunk-filtered.
+	PDF bool
 	// Filtered is set when --filter-chunks ran on this page. FilterErr
 	// records a Jev failure, in which case Content is the unfiltered text.
 	Filtered    bool
@@ -483,7 +487,7 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 	}
 	pages := newScraper(opts.MaxChars).FetchAll(ctx, urls, scrape.DefaultConcurrency)
 	for i, p := range pages {
-		out[i] = pageContent{Content: p.Content, Err: p.Err}
+		out[i] = pageContent{Content: p.Content, Err: p.Err, PDF: p.PDF}
 		if p.Err != nil {
 			// A page behind a wall still has the provider's excerpt.
 			out[i].Content = scrape.Truncate(fallback[i], opts.MaxChars)
@@ -498,7 +502,7 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, jev.DefaultConcurrency)
 	for i := range out {
-		if out[i].Content == "" {
+		if out[i].Content == "" || !(opts.FilterChunks || out[i].PDF) {
 			continue
 		}
 		wg.Add(1)
@@ -563,7 +567,7 @@ func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 		}
 		fmt.Fprint(w, ")")
 	}
-	if opts.FilterChunks {
+	if opts.FilterChunks || total > 0 {
 		fmt.Fprintf(w, "; chunks %d → %d kept; %d → %d chars", total, kept, rawChars, chars)
 		if filterFailed > 0 {
 			fmt.Fprintf(w, "; %d page(s) unfiltered (Jev error)", filterFailed)
@@ -749,6 +753,7 @@ type outputResult struct {
 	// --scrape fields.
 	Content     string `json:"content,omitempty"`
 	ScrapeError string `json:"scrape_error,omitempty"`
+	PDF         *bool  `json:"pdf,omitempty"`
 	// --filter-chunks fields.
 	ChunksTotal *int   `json:"chunks_total,omitempty"`
 	ChunksKept  *int   `json:"chunks_kept,omitempty"`
@@ -761,6 +766,7 @@ func (o *outputResult) fillPage(p *pageContent) {
 		return
 	}
 	o.Content, o.ScrapeError, o.ChunksTotal, o.ChunksKept, o.FilterError = pageFields(p)
+	o.PDF = pdfFlag(p)
 }
 
 // pageFields flattens a pageContent into the shared JSON field values.
@@ -780,6 +786,16 @@ func pageFields(p *pageContent) (content, scrapeErr string, total, kept *int, fi
 		filterErr = p.FilterErr.Error()
 	}
 	return content, scrapeErr, total, kept, filterErr
+}
+
+// pdfFlag returns a pointer to true for PDF pages, nil otherwise, so the
+// JSON field is omitted for ordinary pages.
+func pdfFlag(p *pageContent) *bool {
+	if p == nil || !p.PDF {
+		return nil
+	}
+	yes := true
+	return &yes
 }
 
 func toOutput(r rankedResult) outputResult {
@@ -818,6 +834,7 @@ type rawResult struct {
 	// --scrape / --filter-chunks fields, filled from Page before encoding.
 	Content     string `json:"content,omitempty"`
 	ScrapeError string `json:"scrape_error,omitempty"`
+	PDF         *bool  `json:"pdf,omitempty"`
 	ChunksTotal *int   `json:"chunks_total,omitempty"`
 	ChunksKept  *int   `json:"chunks_kept,omitempty"`
 	FilterError string `json:"filter_error,omitempty"`
@@ -828,6 +845,7 @@ func (r *rawResult) fillPage() {
 		return
 	}
 	r.Content, r.ScrapeError, r.ChunksTotal, r.ChunksKept, r.FilterError = pageFields(r.Page)
+	r.PDF = pdfFlag(r.Page)
 }
 
 func toRaw(results []provider.SearchResult, engines map[string][]string) []rawResult {
@@ -882,11 +900,15 @@ func writeContent(w io.Writer, p *pageContent) {
 	if p.FilterErr != nil {
 		fmt.Fprintf(w, "    ! chunk filter failed: %v (showing unfiltered content)\n", p.FilterErr)
 	}
+	kind := "content"
+	if p.PDF {
+		kind = "PDF text"
+	}
 	switch {
 	case p.Filtered && p.FilterErr == nil:
-		fmt.Fprintf(w, "    --- content (%d/%d chunks kept, %d chars) ---\n", p.ChunksKept, p.ChunksTotal, len([]rune(p.Content)))
+		fmt.Fprintf(w, "    --- %s (%d/%d chunks kept, %d chars) ---\n", kind, p.ChunksKept, p.ChunksTotal, len([]rune(p.Content)))
 	default:
-		fmt.Fprintf(w, "    --- content (%d chars) ---\n", len([]rune(p.Content)))
+		fmt.Fprintf(w, "    --- %s (%d chars) ---\n", kind, len([]rune(p.Content)))
 	}
 	if p.Content == "" {
 		fmt.Fprintln(w, "    (no relevant chunks)")
