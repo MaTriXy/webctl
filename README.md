@@ -71,12 +71,14 @@ Without a Jev key, pass `--no-filter` to get raw results.
 
 ## Backends
 
-With no `--provider`, backends are tried in order until one succeeds: configured keyed providers (exa, parallel, sonar, youcom), then Exa, Parallel, and You.com over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. A provider that answers 429 is skipped for 90s within the process. Each attempt is capped at 12s and the whole chain at 30s. When a provider answers with fewer than half the requested results (throttled free tiers do this instead of erroring), the next provider is queried too and the lists are fused by reciprocal rank. Exa and Parallel return page excerpts with each result; those stand in for pages that cannot be scraped.
+Every search gathers results from three providers (`sources`, configurable) and fuses their rankings by reciprocal rank, so one engine's blind spot or bad day is covered by the others and each free tier carries a third of the load. Providers are taken in this order, skipping any that are cooling down: configured keyed providers (exa, parallel, sonar, youcom), then Exa, Parallel, and You.com over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. A provider that fails or answers empty is replaced by the next one; if fewer than three are available, fewer are used. Each attempt is capped at 12s and the whole search at 30s. Results carry the engines that returned them.
 
 ```bash
-multi_search_web -p exa "transformer circuits"   # pick one
-multi_search_web --multi "transformer circuits"  # query all, fuse with RRF, tag engines
-multi_search_web --random "transformer circuits" # one random backend, fall back on failure
+multi_search_web --sources 1 "transformer circuits"   # plain fallback chain: first provider that answers
+multi_search_web -p exa "transformer circuits"        # exactly one named provider
+multi_search_web --multi "transformer circuits"       # every available provider
+multi_search_web --random "transformer circuits"      # same, in random order
+multi_search_web config set sources 2                 # persist a default
 ```
 
 Duplicate hits (same URL, or the same title from several hosts such as an arXiv abstract, its PDF, and a proceedings mirror) are collapsed before filtering.

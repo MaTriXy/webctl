@@ -36,6 +36,7 @@ type searchFlags struct {
 	noul     string
 	multi    bool
 	random   bool
+	sources  int
 	scrape   bool
 	maxChars int
 	chunks   bool
@@ -55,7 +56,8 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.batch, "batch", false, "score all results in a single Jev request")
 	f.StringVar(&sf.rubric, "rubric", "", "comma-separated score criteria, lowest to highest (overrides the default rubric)")
 	f.StringVar(&sf.noul, "noul", "", "ask Jev a yes/no question about each result instead of scoring")
-	f.BoolVar(&sf.multi, "multi", false, "query every usable backend in parallel and fuse the rankings (RRF)")
+	f.IntVar(&sf.sources, "sources", 0, "providers to query per search and fuse (default from config: 3; -p sets 1)")
+	f.BoolVar(&sf.multi, "multi", false, "query every usable backend (same as --sources with every provider)")
 	f.BoolVar(&sf.random, "random", false, "query one random usable backend, falling back to the others on failure")
 	f.BoolVar(&sf.scrape, "scrape", false, "fetch each kept result's page and include its text content")
 	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap the content kept per page")
@@ -105,14 +107,16 @@ type searchOptions struct {
 	// Providers is the ordered chain to try (or, with modeMulti, to fuse).
 	Providers []string
 	Mode      searchMode
-	Num       int
-	MinScore  float64
-	NoFilter  bool
-	Batch     bool
-	Verbose   bool
-	Rubric    []string
-	Noul      string
-	Format    outputFormat
+	// Sources is how many providers to gather from and fuse.
+	Sources  int
+	Num      int
+	MinScore float64
+	NoFilter bool
+	Batch    bool
+	Verbose  bool
+	Rubric   []string
+	Noul     string
+	Format   outputFormat
 	// Scrape fetches page content for kept results; MaxChars caps it per page.
 	Scrape   bool
 	MaxChars int
@@ -228,9 +232,17 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		return searchOptions{}, err
 	}
 	opts.Providers = chain
+	opts.Sources = cfg.Sources
+	if f.sources > 0 {
+		opts.Sources = f.sources
+	}
+	if f.provider != "" {
+		opts.Sources = 1
+	}
 	switch {
 	case f.multi:
 		opts.Mode = modeMulti
+		opts.Sources = len(chain)
 	case f.random:
 		opts.Mode = modeRandom
 	}
@@ -480,56 +492,17 @@ var shuffleChain = func(chain []string) []string {
 // naming the engine(s) that answered, the results, and (in multi mode) the
 // engines that returned each URL.
 func runSearchStage(ctx context.Context, cfg *config.Config, opts searchOptions, errOut io.Writer) (string, []provider.SearchResult, map[string][]string, error) {
-	switch opts.Mode {
-	case modeMulti:
-		return searchMulti(ctx, cfg, opts.Providers, opts.Query, opts.Num, errOut)
-	case modeRandom:
-		label, results, err := searchChain(ctx, cfg, shuffleChain(opts.Providers), opts.Query, opts.Num, errOut)
-		return label, results, nil, err
+	names := opts.Providers
+	if opts.Mode == modeRandom {
+		names = shuffleChain(names)
 	}
-	label, results, err := searchChain(ctx, cfg, opts.Providers, opts.Query, opts.Num, errOut)
-	return label, results, nil, err
-}
-
-// searchMulti queries every provider in chain concurrently and fuses the
-// lists with RRF, capped at num. Providers that fail are reported to errOut;
-// it is an error only if none succeed.
-func searchMulti(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (string, []provider.SearchResult, map[string][]string, error) {
-	var (
-		provs []provider.Provider
-		errs  []error
-	)
-	for _, name := range chain {
-		p, err := newProvider(cfg, name)
-		if err != nil {
-			errs = append(errs, err)
-			fmt.Fprintf(errOut, "%s skipped: %v\n", name, err)
-			continue
-		}
-		provs = append(provs, p)
+	c := newChain(cfg, names, errOut, opts.Verbose)
+	c.Sources = opts.Sources
+	results, err := c.Search(ctx, opts.Query, opts.Num)
+	if err != nil {
+		return "", nil, nil, err
 	}
-	lists, searchErrs := provider.SearchAll(ctx, provs, query, num)
-	for _, p := range provs {
-		if err, ok := searchErrs[p.Name()]; ok {
-			errs = append(errs, fmt.Errorf("%s: %w", p.Name(), err))
-			fmt.Fprintf(errOut, "%s failed: %v\n", p.Name(), err)
-		}
-	}
-	if len(lists) == 0 {
-		return "", nil, nil, fmt.Errorf("all %d providers failed: %w", len(errs), errors.Join(errs...))
-	}
-	names := make([]string, 0, len(lists))
-	for _, l := range lists {
-		names = append(names, l.Engine)
-	}
-	fused := provider.Fuse(lists, provider.RRFK, num)
-	results := make([]provider.SearchResult, 0, len(fused))
-	engines := make(map[string][]string, len(fused))
-	for _, f := range fused {
-		results = append(results, f.SearchResult)
-		engines[f.URL] = f.Engines
-	}
-	return strings.Join(names, "+"), results, engines, nil
+	return c.Name(), results, c.Engines(), nil
 }
 
 // Chain timing and top-up, overridable by tests.
@@ -565,6 +538,10 @@ func newChain(cfg *config.Config, chain []string, errOut io.Writer, verbose bool
 		Cooldowns:      newCooldown(cfg),
 		CooldownKey:    func(name string) string { return cooldownKey(cfg, name) },
 		OnFallthrough: func(failed string, err error, next string) {
+			if next == "" {
+				fmt.Fprintf(errOut, "%s failed: %v\n", failed, err)
+				return
+			}
 			fmt.Fprintf(errOut, "%s failed (%v); trying %s\n", failed, err, next)
 		},
 		OnSkip: func(name, reason string, announce bool) {
@@ -578,7 +555,7 @@ func newChain(cfg *config.Config, chain []string, errOut io.Writer, verbose bool
 // searchChain tries each provider in order and returns the first successful
 // search, reporting fall-throughs to errOut.
 func searchChain(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (string, []provider.SearchResult, error) {
-	c := newChain(cfg, chain, errOut, sf.verbose)
+	c := newChain(cfg, chain, errOut, false)
 	results, err := c.Search(ctx, query, num)
 	if err != nil {
 		return "", nil, err

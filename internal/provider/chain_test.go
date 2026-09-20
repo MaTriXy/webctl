@@ -168,3 +168,49 @@ func TestChainHonorsCooldowns(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestChainSourcesWavesAndFusion(t *testing.T) {
+	mk := func(prefix string, n int) []SearchResult {
+		var out []SearchResult
+		for i := 0; i < n; i++ {
+			out = append(out, SearchResult{Title: prefix + " result " + string(rune('a'+i)), URL: "https://" + prefix + ".example/" + string(rune('a'+i))})
+		}
+		return out
+	}
+	shared := SearchResult{Title: "the shared page", URL: "https://shared.example/x"}
+	c := chainOf(
+		&chainStub{name: "a", results: append([]SearchResult{shared}, mk("a", 3)...)},
+		&chainStub{name: "b", err: errors.New("down")},
+		&chainStub{name: "c", results: append(mk("c", 2), shared)},
+		&chainStub{name: "d"}, // empty
+		&chainStub{name: "e", results: mk("e", 2)},
+		&chainStub{name: "f", results: mk("f", 2)},
+	)
+	c.Sources = 3
+	got, err := c.Search(context.Background(), "q", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Name() != "a+c+e" {
+		t.Errorf("name = %q, want a+c+e (b failed, d empty, f not needed)", c.Name())
+	}
+	if got[0].URL != shared.URL || len(got) != 8 {
+		t.Errorf("fused: first %s, %d results", got[0].URL, len(got))
+	}
+	if eng := c.Engines()[shared.URL]; strings.Join(eng, ",") != "a,c" {
+		t.Errorf("engines for shared = %v", eng)
+	}
+
+	// Fewer available than requested is fine; one list is returned unfused.
+	c = chainOf(&chainStub{name: "a", results: mk("a", 2)}, &chainStub{name: "b", err: errors.New("down")})
+	c.Sources = 3
+	if got, err := c.Search(context.Background(), "q", 20); err != nil || len(got) != 2 || c.Name() != "a" || c.Engines() != nil {
+		t.Errorf("single list: %v %v %q", got, err, c.Name())
+	}
+	// Nothing available is an error.
+	c = chainOf(&chainStub{name: "a", err: errors.New("one")}, &chainStub{name: "b", err: errors.New("two")})
+	c.Sources = 2
+	if _, err := c.Search(context.Background(), "q", 5); err == nil || !strings.Contains(err.Error(), "all 2 providers failed") {
+		t.Errorf("err = %v", err)
+	}
+}

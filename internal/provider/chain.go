@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,10 +40,21 @@ type Chain struct {
 	// OnSkip, if set, is told when a cooling-down provider is skipped and
 	// whether the user should hear about it this time.
 	OnSkip func(name, reason string, announce bool)
+	// Sources is how many providers to gather results from. 1 (or 0) is
+	// the classic fallback chain; more queries that many providers in
+	// concurrent waves, refilling from the next names when one fails, and
+	// fuses their lists by reciprocal rank.
+	Sources int
 
-	// answered is the provider (or fused pair) that served the last search.
+	// answered is the provider (or fused set) that served the last search.
 	answered string
+	// engines records, after a fused search, which providers returned each URL.
+	engines map[string][]string
 }
+
+// Engines returns, for each URL of the last fused search, the providers
+// that returned it. Nil after a single-source search.
+func (c *Chain) Engines() map[string][]string { return c.engines }
 
 // topUpFraction is the share of the requested count below which an answer
 // is short enough to top up from the next provider. Keyless tiers that are
@@ -80,6 +93,10 @@ func (c *Chain) Name() string {
 func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]SearchResult, error) {
 	if len(c.Names) == 0 || c.New == nil {
 		return nil, errors.New("chain: no providers")
+	}
+	c.engines = nil
+	if c.Sources > 1 {
+		return c.searchSources(ctx, query, numResults)
 	}
 	attempt, budget := c.AttemptTimeout, c.Budget
 	if attempt <= 0 {
@@ -162,6 +179,113 @@ func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, quer
 		return out
 	}
 	return first.Results
+}
+
+// searchSources gathers up to c.Sources provider lists. Providers are
+// tried in chain order in waves of the still-needed count: a wave's
+// failures (errors, empty answers, cooldowns) are replaced from the next
+// names until enough lists are in hand or the names run out. The lists
+// are fused by reciprocal rank; a single successful list is returned as
+// is.
+func (c *Chain) searchSources(ctx context.Context, query string, numResults int) ([]SearchResult, error) {
+	attempt, budget := c.AttemptTimeout, c.Budget
+	if attempt <= 0 {
+		attempt = DefaultAttemptTimeout
+	}
+	if budget <= 0 {
+		budget = DefaultChainBudget
+	}
+	chainCtx, cancelChain := context.WithTimeout(ctx, budget)
+	defer cancelChain()
+
+	type outcome struct {
+		name    string
+		results []SearchResult
+		err     error
+	}
+	var lists []Ranked
+	var errs []error
+	next := 0
+	for len(lists) < c.Sources && next < len(c.Names) && chainCtx.Err() == nil {
+		// Pick the next providers that are not cooling down.
+		var wave []string
+		for len(wave) < c.Sources-len(lists) && next < len(c.Names) {
+			name := c.Names[next]
+			next++
+			if c.coolingDown(name) {
+				errs = append(errs, fmt.Errorf("%s: %w", name, errCoolingDown))
+				continue
+			}
+			wave = append(wave, name)
+		}
+		if len(wave) == 0 {
+			break
+		}
+		outcomes := make([]outcome, len(wave))
+		var wg sync.WaitGroup
+		for i, name := range wave {
+			wg.Add(1)
+			go func(i int, name string) {
+				defer wg.Done()
+				p, err := c.New(name)
+				if err != nil {
+					outcomes[i] = outcome{name: name, err: err}
+					return
+				}
+				attemptCtx, cancel := context.WithTimeout(chainCtx, attempt)
+				results, err := p.Search(attemptCtx, query, numResults)
+				cancel()
+				c.note(name, err)
+				if err == nil && len(results) == 0 {
+					err = errors.New("no results")
+				}
+				outcomes[i] = outcome{name: name, results: results, err: err}
+			}(i, name)
+		}
+		wg.Wait()
+		for _, o := range outcomes {
+			if o.err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", o.name, o.err))
+				if c.OnFallthrough != nil {
+					nextName := ""
+					if next < len(c.Names) {
+						nextName = c.Names[next]
+					}
+					c.OnFallthrough(o.name, o.err, nextName)
+				}
+				continue
+			}
+			lists = append(lists, Ranked{Engine: o.name, Results: o.results})
+		}
+	}
+	if len(lists) == 0 {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("search cancelled after %d failures: %w", len(errs), ctx.Err())
+		}
+		if len(errs) == 1 {
+			return nil, errs[0]
+		}
+		return nil, fmt.Errorf("all %d providers failed: %w", len(errs), errors.Join(errs...))
+	}
+	names := make([]string, len(lists))
+	for i, l := range lists {
+		names[i] = l.Engine
+	}
+	c.answered = strings.Join(names, "+")
+	if len(lists) == 1 {
+		if numResults > 0 && len(lists[0].Results) > numResults {
+			return lists[0].Results[:numResults], nil
+		}
+		return lists[0].Results, nil
+	}
+	fused := Fuse(lists, RRFK, numResults)
+	out := make([]SearchResult, 0, len(fused))
+	c.engines = make(map[string][]string, len(fused))
+	for _, f := range fused {
+		out = append(out, f.SearchResult)
+		c.engines[f.URL] = f.Engines
+	}
+	return out, nil
 }
 
 func (c *Chain) cooldownKey(name string) string {

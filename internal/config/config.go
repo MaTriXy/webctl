@@ -28,6 +28,8 @@ const (
 	DefaultProvider = "" // auto: first usable in Chain order
 	DefaultNum      = 10
 	DefaultMinScore = 1.8
+	// DefaultSources is how many providers a search gathers from and fuses.
+	DefaultSources  = 3
 	DefaultJevURL   = "https://api.typesafe.ai"
 	DefaultJevModel = "jev-latest"
 	EnvPrefix       = "MULTI_SEARCH_WEB"
@@ -46,6 +48,8 @@ type Config struct {
 	Num int
 	// MinScore is the default relevance cutoff.
 	MinScore float64
+	// Sources is how many providers to query per search.
+	Sources int
 
 	// JevBaseURL and JevModel configure the Jev client.
 	JevBaseURL string
@@ -77,6 +81,7 @@ func New() *viper.Viper {
 	v.SetDefault("provider", DefaultProvider)
 	v.SetDefault("num", DefaultNum)
 	v.SetDefault("min_score", DefaultMinScore)
+	v.SetDefault("sources", DefaultSources)
 	v.SetDefault("jev.base_url", DefaultJevURL)
 	v.SetDefault("jev.model", DefaultJevModel)
 	// searxng_url may also be set at the top level of config.yaml.
@@ -200,6 +205,7 @@ func Load(opts Options) (*Config, error) {
 		Provider:     strings.ToLower(strings.TrimSpace(v.GetString("provider"))),
 		Num:          v.GetInt("num"),
 		MinScore:     v.GetFloat64("min_score"),
+		Sources:      v.GetInt("sources"),
 		JevBaseURL:   strings.TrimRight(v.GetString("jev.base_url"), "/"),
 		JevModel:     v.GetString("jev.model"),
 		Keys:         &keys.Store{},
@@ -228,6 +234,9 @@ func Load(opts Options) (*Config, error) {
 
 	if cfg.Num <= 0 {
 		return nil, fmt.Errorf("num must be positive, got %d", cfg.Num)
+	}
+	if cfg.Sources <= 0 {
+		return nil, fmt.Errorf("sources must be positive, got %d", cfg.Sources)
 	}
 	return cfg, nil
 }

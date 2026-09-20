@@ -47,6 +47,13 @@ var settings = []setting{
 		}
 		return n, nil
 	}},
+	{"sources", "providers to query per search and fuse (1 = plain fallback chain)", func(v string) (any, error) {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("sources must be a positive integer, got %q", v)
+		}
+		return n, nil
+	}},
 	{"min_score", "default relevance cutoff on the 0–3 scale", func(v string) (any, error) {
 		f, err := strconv.ParseFloat(v, 64)
 		if err != nil || f < 0 || f > 3 {
@@ -214,6 +221,8 @@ func effective(cfg *config.Config, file map[string]any, key string) (any, string
 		return cfg.Provider, "default"
 	case "num":
 		return cfg.Num, "default"
+	case "sources":
+		return cfg.Sources, "default"
 	case "min_score":
 		return cfg.MinScore, "default"
 	case "jev.base_url":
