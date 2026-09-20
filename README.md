@@ -40,36 +40,6 @@ Searching does not require keys for hobbyist-level usage: with none configured, 
 
 The author prefers [Brave Search](https://brave.com/search/api/): 5,000 free searches a month, requires an API key. It is the first choice in `webctl setup`; once any search key is configured, only your keyed providers are used. ([docs/providers.md](docs/providers.md))
 
-## Installation
-
-Prebuilt binaries for macOS and Linux (amd64 and arm64) are attached to every [release](https://github.com/dorkitude/webctl/releases).
-
-### Homebrew (macOS and Linux)
-
-```bash
-brew install dorkitude/webctl/webctl
-```
-
-### apt (Debian and Ubuntu)
-
-```bash
-curl -fsSL https://dorkitude.github.io/webctl-apt/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/webctl.gpg
-echo "deb [signed-by=/usr/share/keyrings/webctl.gpg] https://dorkitude.github.io/webctl-apt stable main" | sudo tee /etc/apt/sources.list.d/webctl.list
-sudo apt update && sudo apt install webctl
-```
-
-### npm
-
-```bash
-npm install -g webctl
-```
-
-### go install
-
-```bash
-go install github.com/dorkitude/webctl/cmd/webctl@latest
-```
-
 ## Schematics
 
 Filter search engine results to save tokens:
@@ -163,6 +133,36 @@ Respect rate limits with automatic cooldowns:
                                 ▲
                                 └── a 402 starts here
       any success ──► strikes reset to 0
+```
+
+## Installation
+
+Prebuilt binaries for macOS and Linux (amd64 and arm64) are attached to every [release](https://github.com/dorkitude/webctl/releases).
+
+### Homebrew (macOS and Linux)
+
+```bash
+brew install dorkitude/webctl/webctl
+```
+
+### apt (Debian and Ubuntu)
+
+```bash
+curl -fsSL https://dorkitude.github.io/webctl-apt/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/webctl.gpg
+echo "deb [signed-by=/usr/share/keyrings/webctl.gpg] https://dorkitude.github.io/webctl-apt stable main" | sudo tee /etc/apt/sources.list.d/webctl.list
+sudo apt update && sudo apt install webctl
+```
+
+### npm
+
+```bash
+npm install -g webctl
+```
+
+### go install
+
+```bash
+go install github.com/dorkitude/webctl/cmd/webctl@latest
 ```
 
 ## Usage
