@@ -1,20 +1,16 @@
 package cli
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/dorkitude/smart_search/internal/config"
+	"github.com/dorkitude/smart_search/internal/jev"
 	"github.com/dorkitude/smart_search/internal/keys"
 	"github.com/dorkitude/smart_search/internal/provider"
 )
@@ -49,39 +45,18 @@ func validateKey(ctx context.Context, cfg *config.Config, name keys.Name, key st
 
 // validateJevKey asks Jev a trivial noul question to confirm the key works.
 func validateJevKey(ctx context.Context, cfg *config.Config, key string) error {
-	body := map[string]any{
-		"model": cfg.JevModel,
-		"state": map[string]any{"text": "hello world"},
-		"questions": map[string]any{
-			"greeting": map[string]any{"type": "noul", "instructions": "Is the text a greeting?"},
-		},
-	}
-	payload, err := json.Marshal(body)
-	if err != nil {
+	c := jev.NewClient(key)
+	c.BaseURL = cfg.JevBaseURL
+	c.Model = cfg.JevModel
+	c.NoRetry = true
+	if err := c.Validate(ctx); err != nil {
+		var apiErr *jev.APIError
+		if errors.As(err, &apiErr) && apiErr.Unauthorized() {
+			return fmt.Errorf("%w (HTTP %d: %s)", ErrInvalidKey, apiErr.Status, apiErr.Body)
+		}
 		return err
 	}
-	url := cfg.JevBaseURL + "/v1/systemone"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+key)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("reach %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		return nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("%w (HTTP %d)", ErrInvalidKey, resp.StatusCode)
-	default:
-		return fmt.Errorf("Jev returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
-	}
+	return nil
 }
 
 // newKeysCmd builds the `smart_search keys` command group.
