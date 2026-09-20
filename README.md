@@ -81,7 +81,14 @@ multi_search_web --random "transformer circuits"      # same, in random order
 multi_search_web config set sources 2                 # persist a default
 ```
 
-Duplicate hits (same URL, or the same title from several hosts such as an arXiv abstract, its PDF, and a proceedings mirror) are collapsed before filtering.
+### Duplicates
+
+Three engines return the same page at different addresses, and the web mirrors, syndicates, and rewrites everything. Two passes fold that:
+
+1. Before Jev sees anything, results with the same normalized URL (no `www.`/`m.`/`amp.`, no tracking parameters) or the same title are collapsed.
+2. After scoring, near-duplicates are proposed by MinHash locality-sensitive hashing over word shingles of each result's excerpt: 64 hashes in 16 bands, so candidates come from shared hash buckets, not from comparing every pair. The candidate pairs (usually a handful) go to Jev in one batch request that asks whether each pair is the same content (mirror, abstract vs. PDF, syndicated copy, rewrite with nothing of its own). Confirmed groups keep the best-scored copy, merge the engine tags, and list the others under `duplicates` in `--json` and `Duplicate:` lines in the terminal.
+
+`--no-dedupe` skips the second pass.
 
 ### Cooldowns for rate-limiting
 

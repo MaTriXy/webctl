@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dorkitude/multi_search_web/internal/dedupe"
 	"github.com/dorkitude/multi_search_web/internal/jev"
 	"github.com/dorkitude/multi_search_web/internal/prompts"
 	"github.com/dorkitude/multi_search_web/internal/provider"
@@ -24,6 +25,66 @@ type Scraper interface {
 // chunkFilterer is implemented by *jev.Client; the scrape stage needs it.
 type chunkFilterer interface {
 	FilterChunks(ctx context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
+}
+
+// dupConfirmer is implemented by *jev.Client; the filter stage folds
+// near-duplicates with it, as the product does.
+type dupConfirmer interface {
+	ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error)
+}
+
+type evalConfirmer struct {
+	c     dupConfirmer
+	usage jev.Usage
+}
+
+func (e *evalConfirmer) ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []dedupe.Pair) ([]bool, error) {
+	jp := make([]jev.DuplicatePair, len(pairs))
+	for i, p := range pairs {
+		jp[i] = jev.DuplicatePair{A: p.A, B: p.B}
+	}
+	out, usage, err := e.c.ConfirmDuplicates(ctx, query, results, jp)
+	e.usage.Add(usage)
+	return out, err
+}
+
+// foldDuplicates collapses confirmed duplicate groups into their
+// best-valued member and returns the survivors in order.
+func (r *Runner) foldDuplicates(ctx context.Context, query string, qualified []jev.Qualified) ([]jev.Qualified, int, jev.Usage) {
+	dc, ok := r.Jev.(dupConfirmer)
+	if !ok {
+		return qualified, 0, jev.Usage{}
+	}
+	results := make([]provider.SearchResult, len(qualified))
+	for i, q := range qualified {
+		results[i] = q.Result
+	}
+	ec := &evalConfirmer{c: dc}
+	groups, _, err := dedupe.Run(ctx, ec, query, results)
+	if err != nil {
+		return qualified, 0, ec.usage
+	}
+	drop := map[int]bool{}
+	for _, g := range groups {
+		best := g[0]
+		for _, i := range g[1:] {
+			if qualified[i].Value() > qualified[best].Value() {
+				best = i
+			}
+		}
+		for _, i := range g {
+			if i != best {
+				drop[i] = true
+			}
+		}
+	}
+	out := make([]jev.Qualified, 0, len(qualified))
+	for i, q := range qualified {
+		if !drop[i] {
+			out = append(out, q)
+		}
+	}
+	return out, len(drop), ec.usage
 }
 
 // coverageSnippetChars caps the text per result sent to the theme judge in
@@ -217,6 +278,11 @@ func (r *Runner) stageFilter(ctx context.Context, c Case, results []provider.Sea
 		if err != nil {
 			return st, nil, nil, fmt.Errorf("qualify: %w", err)
 		}
+		var folded int
+		var dupUsage jev.Usage
+		qualified, folded, dupUsage = r.foldDuplicates(ctx, c.Query, qualified)
+		st.Usage.Add(dupUsage)
+		st.Folded = folded
 		min := c.threshold()
 		for _, q := range qualified {
 			if q.Err != nil || (q.Score == nil && q.Noul == nil) {

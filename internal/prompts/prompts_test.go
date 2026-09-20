@@ -132,7 +132,7 @@ func TestLoadFSAndListFS(t *testing.T) {
 
 func TestEmbeddedPrompts(t *testing.T) {
 	names := List()
-	want := []string{ChunkRelevance, RelevanceBatch, RelevanceNoul, RelevanceScore, SourceQuality, ThemeCoverage}
+	want := []string{ChunkRelevance, DuplicatePair, RelevanceBatch, RelevanceNoul, RelevanceScore, SourceQuality, ThemeCoverage}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("List = %v, want %v", names, want)
 	}
@@ -159,6 +159,8 @@ func TestEmbeddedPrompts(t *testing.T) {
 			needles = []string{"Q", "TH", "result_0"}
 		case ChunkRelevance:
 			needles = []string{"Q", "CHUNK", "result_0"}
+		case DuplicatePair:
+			needles = []string{"Q", "S", "result_0"}
 		}
 		for _, needle := range needles {
 			if !strings.Contains(out, needle) {

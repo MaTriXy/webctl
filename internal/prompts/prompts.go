@@ -27,6 +27,7 @@ const (
 	ThemeCoverage  = "theme-coverage"
 	ChunkRelevance = "chunk-relevance"
 	SourceQuality  = "source-quality"
+	DuplicatePair  = "duplicate-pair"
 )
 
 // Prompt is a parsed OKF prompt file.

@@ -47,6 +47,7 @@ type fakeQualifier struct {
 	scores map[string]float64 // URL → score / P(yes)
 	errs   map[string]error   // URL → per-result error
 	err    error              // whole-request error
+	dupes  map[string]bool    // "urlA|urlB" → confirmed duplicate
 
 	gotQuery string
 	gotOpts  jev.QualifyOptions
@@ -60,6 +61,15 @@ type fakeQualifier struct {
 	mu             sync.Mutex
 	chunkCalls     int
 	gotChunks      [][]string
+}
+
+// dupes maps "urlA|urlB" to whether the fake confirms them as duplicates.
+func (f *fakeQualifier) ConfirmDuplicates(_ context.Context, _ string, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error) {
+	out := make([]bool, len(pairs))
+	for i, p := range pairs {
+		out[i] = f.dupes[results[p.A].URL+"|"+results[p.B].URL] || f.dupes[results[p.B].URL+"|"+results[p.A].URL]
+	}
+	return out, jev.Usage{InputTokens: 7}, nil
 }
 
 func (f *fakeQualifier) FilterChunks(_ context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error) {
@@ -1128,5 +1138,34 @@ func TestSearchChainTopUpLabel(t *testing.T) {
 	}
 	if !strings.Contains(out, paper.URL) || !strings.Contains(out, wiki.URL) {
 		t.Errorf("fused output = %q", out)
+	}
+}
+
+func TestSearchFoldsDuplicates(t *testing.T) {
+	body := strings.Repeat("Transformers rely entirely on attention to draw global dependencies between input and output tokens. ", 3)
+	abs := provider.SearchResult{Title: "Attention Is All You Need", URL: "https://arxiv.org/abs/1706.03762", Snippet: "We propose the Transformer.", Content: body}
+	pdf := provider.SearchResult{Title: "Attention Is All You Need PDF", URL: "https://proceedings.neurips.cc/paper/7181.pdf", Snippet: "Abstract.", Content: body + " Footer."}
+	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	h.prov.results = []provider.SearchResult{pdf, abs, wiki}
+	h.qual.scores = map[string]float64{abs.URL: 2.9, pdf.URL: 2.5, wiki.URL: 2.2}
+	h.qual.dupes = map[string]bool{abs.URL + "|" + pdf.URL: true}
+	out, errOut, err := h.run("--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 2 || items[0].URL != abs.URL || strings.Join(items[0].Duplicates, ",") != pdf.URL {
+		t.Errorf("items = %+v", items)
+	}
+	if !strings.Contains(errOut, "1 duplicate(s) folded") {
+		t.Errorf("stderr = %q", errOut)
+	}
+	// --no-dedupe keeps both.
+	out, _, err = h.run("--json", "--no-dedupe", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items := mustJSON[[]outputResult](t, out); len(items) != 3 {
+		t.Errorf("no-dedupe items = %d", len(items))
 	}
 }

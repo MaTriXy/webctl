@@ -326,7 +326,9 @@ type Stage struct {
 	ExpectedHits int  `json:"expected_hits"`
 	// Flagged counts delivered results the source-quality audit judged to
 	// be SEO, affiliate, or content-farm pages.
-	Flagged  int           `json:"flagged"`
+	Flagged int `json:"flagged"`
+	// Folded counts results collapsed into a duplicate\'s best copy.
+	Folded   int           `json:"folded,omitempty"`
 	Themes   []ThemeResult `json:"themes,omitempty"`
 	Covered  int           `json:"covered"`
 	Passed   bool          `json:"passed"`
@@ -721,6 +723,9 @@ func writeStage(w io.Writer, st Stage) {
 	}
 	if st.Flagged > 0 {
 		fmt.Fprintf(w, "  flagged %d", st.Flagged)
+	}
+	if st.Folded > 0 {
+		fmt.Fprintf(w, "  folded %d", st.Folded)
 	}
 	if st.ExpectedHits > 0 {
 		fmt.Fprintf(w, "  expected-domain %d", st.ExpectedHits)

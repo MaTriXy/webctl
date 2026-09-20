@@ -218,6 +218,9 @@ type Qualified struct {
 	// Err is set when Jev failed for this result (per-result mode) or returned
 	// no answer for it (batch mode).
 	Err error `json:"-"`
+	// Duplicates are other results judged to be the same content, folded
+	// into this one.
+	Duplicates []provider.SearchResult `json:"duplicates,omitempty"`
 }
 
 // Value returns the comparable relevance value: the score for score mode, or

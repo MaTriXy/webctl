@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dorkitude/multi_search_web/internal/config"
+	"github.com/dorkitude/multi_search_web/internal/dedupe"
 	"github.com/dorkitude/multi_search_web/internal/jev"
 	"github.com/dorkitude/multi_search_web/internal/keys"
 	"github.com/dorkitude/multi_search_web/internal/provider"
@@ -40,6 +41,7 @@ type searchFlags struct {
 	scrape   bool
 	maxChars int
 	chunks   bool
+	noDedupe bool
 }
 
 var sf searchFlags
@@ -62,6 +64,7 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.scrape, "scrape", false, "fetch each kept result's page and include its text content")
 	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap the content kept per page")
 	f.BoolVar(&sf.chunks, "filter-chunks", false, "with --scrape, keep only the page chunks Jev judges relevant to the query (one batch Jev request per page)")
+	f.BoolVar(&sf.noDedupe, "no-dedupe", false, "skip the Jev pass that folds near-duplicate results (mirrors, PDF copies, rewrites) into one")
 }
 
 // qualifier is the slice of *jev.Client the search pipeline depends on.
@@ -69,6 +72,78 @@ func addSearchFlags(cmd *cobra.Command) {
 type qualifier interface {
 	Qualify(ctx context.Context, query string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
 	FilterChunks(ctx context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
+	ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []jev.DuplicatePair) ([]bool, jev.Usage, error)
+}
+
+// jevConfirmer adapts a qualifier to dedupe.Confirmer, accumulating usage.
+type jevConfirmer struct {
+	q     qualifier
+	usage jev.Usage
+}
+
+func (j *jevConfirmer) ConfirmDuplicates(ctx context.Context, query string, results []provider.SearchResult, pairs []dedupe.Pair) ([]bool, error) {
+	jp := make([]jev.DuplicatePair, len(pairs))
+	for i, p := range pairs {
+		jp[i] = jev.DuplicatePair{A: p.A, B: p.B}
+	}
+	out, usage, err := j.q.ConfirmDuplicates(ctx, query, results, jp)
+	j.usage.Add(usage)
+	return out, err
+}
+
+// collapseDuplicates asks Jev which near-duplicate candidates are the same
+// content and folds each group into its best-scored member, which keeps
+// the union of engines and lists the others as Duplicates. It returns the
+// survivors in their original order and how many were folded.
+func collapseDuplicates(ctx context.Context, q qualifier, query string, qualified []jev.Qualified, engines map[string][]string) ([]jev.Qualified, int, jev.Usage, error) {
+	results := make([]provider.SearchResult, len(qualified))
+	for i, item := range qualified {
+		results[i] = item.Result
+	}
+	jc := &jevConfirmer{q: q}
+	groups, _, err := dedupe.Run(ctx, jc, query, results)
+	if err != nil {
+		return qualified, 0, jc.usage, err
+	}
+	drop := map[int]bool{}
+	for _, g := range groups {
+		best := g[0]
+		for _, i := range g[1:] {
+			if qualified[i].Value() > qualified[best].Value() {
+				best = i
+			}
+		}
+		keeper := &qualified[best]
+		for _, i := range g {
+			if i == best {
+				continue
+			}
+			keeper.Duplicates = append(keeper.Duplicates, qualified[i].Result)
+			drop[i] = true
+			if engines != nil {
+				engines[keeper.Result.URL] = unionStrings(engines[keeper.Result.URL], engines[qualified[i].Result.URL])
+			}
+		}
+	}
+	out := make([]jev.Qualified, 0, len(qualified))
+	for i, item := range qualified {
+		if !drop[i] {
+			out = append(out, item)
+		}
+	}
+	return out, len(drop), jc.usage, nil
+}
+
+func unionStrings(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range append(append([]string{}, a...), b...) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // scraper is the slice of *scrape.Fetcher the pipeline depends on.
@@ -122,6 +197,8 @@ type searchOptions struct {
 	MaxChars int
 	// FilterChunks keeps only the scraped chunks Jev judges relevant.
 	FilterChunks bool
+	// NoDedupe skips the Jev duplicate pass.
+	NoDedupe bool
 }
 
 type outputFormat int
@@ -189,6 +266,7 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		Scrape:       f.scrape,
 		MaxChars:     f.maxChars,
 		FilterChunks: f.chunks,
+		NoDedupe:     f.noDedupe,
 	}
 	if f.num > 0 {
 		opts.Num = f.num
@@ -329,9 +407,27 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		return err
 	}
 
+	// Engines often index the same page at different addresses: one Jev
+	// pass over the near-duplicate candidates folds those together.
+	folded := 0
+	if !opts.NoDedupe {
+		var dupUsage jev.Usage
+		var dedupeErr error
+		if engines == nil {
+			engines = map[string][]string{}
+		}
+		qualified, folded, dupUsage, dedupeErr = collapseDuplicates(ctx, q, opts.Query, qualified, engines)
+		usage.Add(dupUsage)
+		if dedupeErr != nil && (opts.Format == formatPretty || opts.Verbose) {
+			fmt.Fprintf(errOut, "duplicate check failed (%v); showing all results\n", dedupeErr)
+		}
+	}
 	ranked := rank(qualified, opts.MinScore)
 	for i := range ranked {
 		ranked[i].Engines = engines[ranked[i].Result.URL]
+	}
+	if folded > 0 && (opts.Format == formatPretty || opts.Verbose) {
+		fmt.Fprintf(errOut, "%d duplicate(s) folded into their best copy\n", folded)
 	}
 	if opts.Format == formatPretty || opts.Verbose {
 		writeSummary(errOut, label, ranked, opts, usage)
@@ -646,6 +742,9 @@ type outputResult struct {
 	Kept    bool     `json:"kept"`
 	Error   string   `json:"error,omitempty"`
 	Engines []string `json:"engines,omitempty"`
+	// Duplicates are other addresses of the same content that were folded
+	// into this result.
+	Duplicates []string `json:"duplicates,omitempty"`
 
 	// --scrape fields.
 	Content     string `json:"content,omitempty"`
@@ -690,6 +789,9 @@ func toOutput(r rankedResult) outputResult {
 		Snippet: r.Result.Snippet,
 		Kept:    r.Kept,
 		Engines: r.Engines,
+	}
+	for _, d := range r.Duplicates {
+		o.Duplicates = append(o.Duplicates, d.URL)
 	}
 	if r.Score != nil {
 		score, conf, max := r.Score.Score, r.Score.Confidence, r.Score.MaxScore()
@@ -843,6 +945,9 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 		}
 		if len(r.Engines) > 0 {
 			fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))
+		}
+		for _, d := range r.Duplicates {
+			fmt.Fprintf(w, "    Duplicate: %s\n", d.URL)
 		}
 		if opts.Verbose {
 			switch {
