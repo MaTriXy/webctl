@@ -247,7 +247,7 @@ func Load(opts Options) (*Config, error) {
 // keyless. The error is actionable when a required credential is missing.
 func (c *Config) ProviderKey(name string) (string, error) {
 	name = provider.Normalize(name)
-	if name == "ddg" {
+	if name == "ddg" || name == "ketch" {
 		return "", nil
 	}
 	n, err := keys.Parse(name)
@@ -286,9 +286,10 @@ func (c *Config) JevKey() (string, error) {
 // Chain returns the providers to try, in order. An explicit choice yields a
 // one-element chain (validated later by ProviderKey). Otherwise the preferred
 // provider from config comes first (an error if it is unusable, since the
-// user asked for it), then every keyed provider with a key in Names order,
-// then the keyless fallbacks: exa and parallel over their hosted MCP servers,
-// ddg, and searxng when its URL is set.
+// user asked for it), then searxng when its URL is set, then every keyed
+// provider with a key in Names order, then ketch, then ddg. The keyless
+// Exa, Parallel, and You.com endpoints are not in the default chain: ketch
+// already rotates through them, and keyed use is a deliberate, paid choice.
 func (c *Config) Chain(explicit string) ([]string, error) {
 	if explicit = provider.Normalize(explicit); explicit != "" {
 		return []string{explicit}, nil
@@ -308,18 +309,19 @@ func (c *Config) Chain(explicit string) ([]string, error) {
 		}
 		add(pref)
 	}
+	// Your own SearXNG first: no quota, no cost.
+	if c.Usable("searxng") {
+		add("searxng")
+	}
+	// Paid providers only when you chose to set a key.
 	for _, name := range provider.Keyed() {
 		if c.Keys.Get(keys.Name(name)) != "" {
 			add(name)
 		}
 	}
-	add("exa")
-	add("parallel")
-	add("youcom")
+	// ketch runs its own chain of free tiers; DuckDuckGo is the last resort.
+	add("ketch")
 	add("ddg")
-	if c.Usable("searxng") {
-		add("searxng")
-	}
 	return chain, nil
 }
 

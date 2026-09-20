@@ -48,7 +48,7 @@ var sf searchFlags
 
 func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVarP(&sf.provider, "provider", "p", "", "use exactly one provider: exa, parallel, sonar, youcom, ddg, searxng")
+	f.StringVarP(&sf.provider, "provider", "p", "", "use exactly one provider: ketch, searxng, ddg, or keyed exa, parallel, sonar, youcom")
 	f.IntVarP(&sf.num, "num", "n", 0, "results to request per provider (default 10)")
 	f.IntVar(&sf.sources, "sources", 0, "providers to query and fuse (default 3)")
 	f.BoolVar(&sf.multi, "multi", false, "query every available provider")

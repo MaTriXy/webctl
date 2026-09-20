@@ -261,12 +261,12 @@ func TestChain(t *testing.T) {
 		{"explicit wins", Config{Provider: "exa", Keys: &keys.Store{SonarAPIKey: "s"}}, "Sonar", []string{"sonar"}, false},
 		{"explicit even without key", Config{Provider: "exa", Keys: &keys.Store{}}, "parallel", []string{"parallel"}, false},
 		{"explicit alias", Config{Keys: &keys.Store{}}, "DuckDuckGo", []string{"ddg"}, false},
-		{"preferred first, then keyed in order, then ddg", Config{Provider: "sonar", Keys: &keys.Store{ParallelAPIKey: "p", ExaAPIKey: "e", SonarAPIKey: "s"}}, "", []string{"sonar", "exa", "parallel", "youcom", "ddg"}, false},
+		{"preferred first, then keyed in order, then ddg", Config{Provider: "sonar", Keys: &keys.Store{ParallelAPIKey: "p", ExaAPIKey: "e", SonarAPIKey: "s"}}, "", []string{"sonar", "exa", "parallel", "ketch", "ddg"}, false},
 		{"preferred without key is an error", Config{Provider: "sonar", Keys: &keys.Store{ExaAPIKey: "e"}}, "", nil, true},
-		{"no keys: keyless exa, parallel, youcom, then ddg", Config{Keys: &keys.Store{}}, "", []string{"exa", "parallel", "youcom", "ddg"}, false},
-		{"searxng after ddg when configured", Config{Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"exa", "parallel", "youcom", "ddg", "searxng"}, false},
-		{"preferred keyless", Config{Provider: "searxng", Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa", "parallel", "youcom", "ddg"}, false},
-		{"preferred ddg", Config{Provider: "ddg", Keys: &keys.Store{ExaAPIKey: "e"}}, "", []string{"ddg", "exa", "parallel", "youcom"}, false},
+		{"no keys: ketch then ddg", Config{Keys: &keys.Store{}}, "", []string{"ketch", "ddg"}, false},
+		{"searxng first when configured", Config{Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa", "ketch", "ddg"}, false},
+		{"preferred keyless", Config{Provider: "searxng", Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa", "ketch", "ddg"}, false},
+		{"preferred ddg", Config{Provider: "ddg", Keys: &keys.Store{ExaAPIKey: "e"}}, "", []string{"ddg", "exa", "ketch"}, false},
 	}
 	for _, tc := range cases {
 		got, err := tc.cfg.Chain(tc.explicit)

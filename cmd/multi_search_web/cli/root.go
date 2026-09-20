@@ -34,9 +34,10 @@ func newRootCmd() *cobra.Command {
 (TypeSafe's System One model) score every result for topic and source
 quality, so only results worth reading reach your context window.
 
-Required: a Jev key (multi_search_web setup). Nothing else: search runs on
-keyless Exa, Parallel, and You.com; search keys or a local SearXNG only
-lift their rate limits. Throttled providers back off (see "cooldown").
+Required: a Jev key (multi_search_web setup). Nothing else: search runs
+through ketch (github.com/1broseidon/ketch) and DuckDuckGo, or your own
+SearXNG. Paid providers join only when you set a key. Throttled providers
+back off (see "cooldown").
 
 Help text is short by design. The full reference is compiled in:
   multi_search_web docs            topics
