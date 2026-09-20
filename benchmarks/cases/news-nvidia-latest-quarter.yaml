@@ -1,0 +1,7 @@
+name: news-nvidia-latest-quarter
+domain: earnings
+tags:
+- earnings
+- recency
+question: What total revenue and data center revenue did NVIDIA report in its most recent quarterly earnings release as of today, and which fiscal quarter was it? Include the release date and source.
+recency: true

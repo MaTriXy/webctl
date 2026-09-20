@@ -1,0 +1,9 @@
+name: community-bun-vs-node-production
+domain: community
+tags:
+- hackernews
+question: 'What do developers on Hacker News and Reddit report about running Bun instead of Node.js in production: what benefits and what compatibility problems do they actually hit?'
+rubric:
+- Names at least two concrete benefits users report (startup time, install speed, built-in bundler/test runner, TypeScript without a build step)
+- Names at least two concrete problems users report (Node API compatibility gaps, native module/addon issues, memory or crash bugs, ecosystem/tooling assumptions)
+- Cites at least one Hacker News or Reddit URL

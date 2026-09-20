@@ -1,0 +1,9 @@
+name: pep8-line-length
+domain: long-doc
+tags:
+- python
+question: What maximum line length does PEP 8 recommend for code and for docstrings/comments, and what does it say about teams that prefer longer lines?
+expected:
+- 79 characters for code lines
+- 72 characters for docstrings and comments (flowing long blocks of text)
+- Teams that agree may raise the code line limit up to 99 characters, with comments and docstrings still wrapped at 72

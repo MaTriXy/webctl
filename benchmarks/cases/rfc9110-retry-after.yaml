@@ -1,0 +1,10 @@
+name: rfc9110-retry-after
+domain: long-doc
+tags:
+- rfc
+- http
+question: Per RFC 9110 (HTTP Semantics), what two value forms can the Retry-After header field take, and with which kinds of responses does the RFC say it is used?
+expected:
+- Retry-After is either an HTTP-date or a non-negative integer number of seconds (delay-seconds)
+- Used with 503 (Service Unavailable) to say how long the service is expected to be unavailable
+- Used with redirect (3xx) responses to indicate the minimum time to wait before following the redirect

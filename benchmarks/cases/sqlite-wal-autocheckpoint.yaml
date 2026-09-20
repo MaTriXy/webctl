@@ -1,0 +1,9 @@
+name: sqlite-wal-autocheckpoint
+domain: dev-docs
+tags:
+- sqlite
+question: In SQLite WAL mode, when does an automatic checkpoint run by default, what is the default threshold, and which pragma changes it?
+expected:
+- A checkpoint runs automatically when a COMMIT causes the WAL to reach the threshold
+- The default threshold is 1000 pages
+- PRAGMA wal_autocheckpoint (or sqlite3_wal_autocheckpoint) changes it; 0 disables automatic checkpoints

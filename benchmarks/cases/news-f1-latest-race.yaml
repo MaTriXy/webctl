@@ -1,0 +1,7 @@
+name: news-f1-latest-race
+domain: news
+tags:
+- news
+- recency
+question: Who won the most recent Formula 1 Grand Prix that has been held as of today, at which circuit, and on what date? Include the source.
+recency: true

@@ -1,0 +1,8 @@
+name: news-fomc-latest-rate
+domain: news
+tags:
+- news
+- recency
+question: What is the current target range for the US federal funds rate after the most recent FOMC meeting as of today, and what was the decision (hold, cut, hike) at that meeting? Include the meeting
+  date and source.
+recency: true

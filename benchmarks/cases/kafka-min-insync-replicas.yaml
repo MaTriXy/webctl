@@ -1,0 +1,11 @@
+name: kafka-min-insync-replicas
+domain: dev-docs
+tags:
+- kafka
+- long-doc
+question: In Apache Kafka, a topic has replication factor 3 and min.insync.replicas=2, and the producer uses acks=all. If only one replica is currently in the ISR, what happens to produce requests, and
+  which exception does the producer see?
+expected:
+- Produce requests are rejected (the write fails) because the ISR size is below min.insync.replicas
+- The producer receives NotEnoughReplicas (or NotEnoughReplicasAfterAppend) exception
+- acks=all means the leader waits for the full ISR, and min.insync.replicas sets the minimum ISR size for the write to succeed

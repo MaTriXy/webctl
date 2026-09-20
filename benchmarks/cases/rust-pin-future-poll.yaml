@@ -1,0 +1,9 @@
+name: rust-pin-future-poll
+domain: dev-docs
+tags:
+- rust
+question: In Rust, why does Future::poll take self as Pin<&mut Self>, and what guarantee does Pin give for futures created by async blocks?
+expected:
+- async blocks/fns compile to state machines that can hold references to their own fields (self-referential)
+- Pin guarantees the value will not be moved in memory after being pinned, so those internal references stay valid
+- Types that implement Unpin are exempt and can be moved freely

@@ -1,0 +1,10 @@
+name: community-wsus-alternatives
+domain: community
+tags:
+- reddit
+- sysadmin
+question: Microsoft has deprecated WSUS. What do r/sysadmin users recommend as replacements for patching Windows fleets, and what tradeoffs do they discuss?
+rubric:
+- Names at least three specific replacement tools or services (e.g. Intune/Windows Autopatch, PDQ Deploy, Action1, ManageEngine, NinjaOne, Tanium)
+- Mentions at least one tradeoff raised by users (cost per endpoint, cloud dependence, bandwidth/peer caching, lack of third-party patching)
+- Cites at least one Reddit thread URL as a source

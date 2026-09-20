@@ -1,0 +1,8 @@
+name: us-ev-tax-credit-end
+domain: policy
+tags:
+- policy
+question: What happened to the US federal clean vehicle (EV) tax credits under the 2025 budget reconciliation law, and on what date did they end?
+expected:
+- The One Big Beautiful Bill Act (signed July 4, 2025) terminated the federal clean vehicle credits
+- The credits ended for vehicles acquired after September 30, 2025 (new, used, and commercial clean vehicle credits)

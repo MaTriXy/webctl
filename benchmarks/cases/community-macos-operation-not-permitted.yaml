@@ -1,0 +1,10 @@
+name: community-macos-operation-not-permitted
+domain: community
+tags:
+- reddit
+- macos
+question: On macOS, running `ls ~/Desktop` in Terminal gives 'Operation not permitted' even though the folder is readable in Finder. What is the widely reported cause and the standard fix people share on
+  Reddit and Stack Exchange?
+expected:
+- 'Cause: macOS privacy protections (TCC) restrict Terminal''s access to protected folders like Desktop, Documents, Downloads'
+- 'Fix: grant Terminal Full Disk Access (or Files and Folders access) in System Settings > Privacy & Security, then restart Terminal'

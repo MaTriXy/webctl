@@ -1,0 +1,10 @@
+name: k8s-oomkilled-under-limit
+domain: dev-docs
+tags:
+- kubernetes
+question: Why can a Kubernetes container be OOMKilled while its reported memory usage is below its memory limit? Give the concrete mechanisms.
+expected:
+- Memory-backed emptyDir volumes and tmpfs writes count toward the container's cgroup memory limit
+- cgroup accounting includes page cache/kernel memory beyond the process RSS that dashboards usually show
+- The node itself can run out of memory and the kernel OOM killer or kubelet eviction kills the container regardless of its own limit
+- Usage is sampled; a short spike between samples can hit the limit unseen

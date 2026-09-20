@@ -1,0 +1,9 @@
+name: terraform-moved-block
+domain: dev-docs
+tags:
+- terraform
+question: In Terraform, what does a `moved` block do, which Terraform version introduced it, and what does it let you avoid?
+expected:
+- A moved block records that a resource/module address was renamed or moved so Terraform updates state addresses
+- Introduced in Terraform 1.1
+- It avoids Terraform destroying and recreating the resource on the next apply

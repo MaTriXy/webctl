@@ -1,0 +1,9 @@
+name: postgres-autovacuum-threshold
+domain: dev-docs
+tags:
+- postgres
+question: In PostgreSQL, how is the autovacuum vacuum threshold for a table computed from autovacuum_vacuum_threshold and autovacuum_vacuum_scale_factor, and what are their default values?
+expected:
+- vacuum threshold = autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor * number of tuples (pg_class.reltuples)
+- Default autovacuum_vacuum_threshold is 50
+- Default autovacuum_vacuum_scale_factor is 0.2 (20%)

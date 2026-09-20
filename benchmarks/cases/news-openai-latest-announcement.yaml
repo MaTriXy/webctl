@@ -1,0 +1,7 @@
+name: news-openai-latest-announcement
+domain: news
+tags:
+- news
+- recency
+question: What was the most significant product or model announcement from OpenAI in the two weeks before today? Give the name, the date, what it is, and the source.
+recency: true

@@ -1,0 +1,9 @@
+name: clickhouse-final-modifier
+domain: dev-docs
+tags:
+- clickhouse
+question: In ClickHouse, what does the FINAL modifier do when querying a ReplacingMergeTree table, what is its performance cost, and which setting makes queries apply FINAL automatically?
+expected:
+- FINAL merges (deduplicates/collapses) rows across parts at query time so the result reflects the fully merged state
+- It is slower because merging happens during the query and parallelism is reduced
+- The setting final=1 (SET final = 1) applies FINAL automatically to all applicable tables

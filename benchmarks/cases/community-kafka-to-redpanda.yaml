@@ -1,0 +1,10 @@
+name: community-kafka-to-redpanda
+domain: community
+tags:
+- reddit
+- kafka
+question: Why do teams say they moved from Apache Kafka to Redpanda, according to Reddit and Hacker News discussions, and what caveats do skeptics raise?
+rubric:
+- Gives at least two reasons movers cite (no ZooKeeper/JVM, simpler ops, lower latency or cost, single binary)
+- Gives at least one caveat skeptics raise (source-available license, smaller ecosystem, benchmarks contested, vendor lock-in)
+- Cites at least one Reddit or Hacker News URL

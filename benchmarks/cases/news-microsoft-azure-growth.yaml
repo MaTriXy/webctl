@@ -1,0 +1,8 @@
+name: news-microsoft-azure-growth
+domain: earnings
+tags:
+- earnings
+- recency
+question: On Microsoft's most recent quarterly earnings call as of today, what Azure (or 'Azure and other cloud services') revenue growth rate did the company report, and for which fiscal quarter? Include
+  the date and source.
+recency: true

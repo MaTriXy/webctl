@@ -1,0 +1,8 @@
+name: jwst-orbit
+domain: science
+tags:
+- space
+question: Where does the James Webb Space Telescope orbit, and roughly how far is that from Earth?
+expected:
+- It orbits the Sun–Earth L2 Lagrange point (a halo orbit around L2)
+- About 1.5 million kilometers (roughly 1 million miles) from Earth

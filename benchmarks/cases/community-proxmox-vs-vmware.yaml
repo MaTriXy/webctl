@@ -1,0 +1,11 @@
+name: community-proxmox-vs-vmware
+domain: community
+tags:
+- reddit
+- homelab
+question: After Broadcom's VMware licensing changes, what does the r/homelab and r/sysadmin community say about moving to Proxmox, including the main reasons and the pain points they report?
+rubric:
+- States the licensing trigger (Broadcom ended perpetual licenses / free ESXi, moved to subscription bundles)
+- Gives at least two reasons users cite for Proxmox (no license cost, open source, ZFS/backup server, LXC)
+- Gives at least one pain point users report (migration effort, lack of vendor support, clustering/HA maturity, vSAN-like storage gaps)
+- Cites at least one Reddit thread URL

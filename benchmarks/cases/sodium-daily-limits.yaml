@@ -1,0 +1,8 @@
+name: sodium-daily-limits
+domain: science
+tags:
+- health
+question: What daily sodium intake limits do the World Health Organization and the American Heart Association recommend for adults?
+expected:
+- 'WHO: less than 2 grams of sodium per day (equivalent to under 5 grams of salt)'
+- 'AHA: no more than 2,300 mg per day, with an ideal limit of 1,500 mg for most adults'

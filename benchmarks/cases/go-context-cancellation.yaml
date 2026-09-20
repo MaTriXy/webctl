@@ -1,0 +1,9 @@
+name: go-context-cancellation
+domain: dev-docs
+tags:
+- go
+question: In Go's context package, what does ctx.Err() return after cancellation versus after a deadline passes, and does canceling a parent context cancel contexts derived from it?
+expected:
+- ctx.Err() returns context.Canceled after Cancel is called
+- ctx.Err() returns context.DeadlineExceeded when the deadline passes
+- 'Yes: canceling a parent cancels all contexts derived from it'

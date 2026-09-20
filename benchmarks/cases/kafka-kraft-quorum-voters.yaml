@@ -1,0 +1,9 @@
+name: kafka-kraft-quorum-voters
+domain: dev-docs
+tags:
+- kafka
+question: In Kafka KRaft mode, which configuration property lists the controller quorum voters, and what is the format of each entry in it? Mention the newer alternative for dynamic quorums if one exists.
+expected:
+- controller.quorum.voters
+- Each entry is <node id>@<host>:<port>, comma separated
+- Newer Kafka (3.9+) supports dynamic quorums via controller.quorum.bootstrap.servers

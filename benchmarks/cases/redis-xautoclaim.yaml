@@ -1,0 +1,9 @@
+name: redis-xautoclaim
+domain: dev-docs
+tags:
+- redis
+question: In Redis Streams, what does the XAUTOCLAIM command do, what is its min-idle-time argument for, and in which Redis version was it introduced?
+expected:
+- XAUTOCLAIM transfers ownership of pending stream entries from one consumer to another (like XPENDING + XCLAIM in one call)
+- 'min-idle-time: only entries idle for at least that many milliseconds are claimed'
+- Introduced in Redis 6.2

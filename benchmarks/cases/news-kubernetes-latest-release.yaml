@@ -1,0 +1,7 @@
+name: news-kubernetes-latest-release
+domain: news
+tags:
+- recency
+- kubernetes
+question: What is the latest released Kubernetes minor version as of today, when was it released, and what is one headline feature of that release? Include the source.
+recency: true

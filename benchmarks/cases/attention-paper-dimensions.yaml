@@ -1,0 +1,10 @@
+name: attention-paper-dimensions
+domain: long-doc
+tags:
+- paper
+- pdf
+question: In the paper 'Attention Is All You Need', how many layers do the encoder and decoder stacks have in the base model, what is d_model, and how many attention heads are used?
+expected:
+- 6 encoder layers and 6 decoder layers (N=6)
+- d_model = 512
+- 8 attention heads (h=8)

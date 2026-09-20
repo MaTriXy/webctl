@@ -212,6 +212,10 @@ webctl search "q" --scrape --max-chars 20000  # default 50000 per page
 webctl search "q" --scrape --filter-chunks --chunk-chars 1000  # default 2000
 ```
 
+### Benchmarks
+
+`benchmarks/` runs Claude Code, Codex, and pi on 30 research questions with webctl and with their own web search, and has Kimi K3 grade the answers. Wall clock, tokens, cost, quality. [benchmarks/README.md](benchmarks/README.md)
+
 ### Dedupe
 
 Exact duplicates (same normalized URL or title) collapse before scoring; near-duplicates are proposed by MinHash and confirmed by Jev after. [docs/dedupe.md](docs/dedupe.md)
