@@ -18,9 +18,12 @@ func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Interactive wizard to configure and validate API keys",
-		Long: `Walks you through adding API keys for search providers (Exa, Parallel, Sonar)
-and Jev. Input is masked, each key is validated with a lightweight API call,
-and keys are stored in ~/smart_search/keys.json with mode 0600.
+		Long: `Walks you through adding API keys for search providers (Exa, Parallel, Sonar),
+a self-hosted SearXNG URL, and Jev. Everything is optional: with no keys at
+all, searches use DuckDuckGo (ddg) and --no-filter skips Jev.
+
+Key input is masked, each entry is validated with a lightweight API call, and
+settings are stored in ~/smart_search/keys.json with mode 0600.
 
 Re-run at any time to add, rotate, or re-validate keys.`,
 		Args: cobra.NoArgs,
@@ -44,13 +47,17 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 
 	fmt.Println("=== smart_search setup ===")
 	fmt.Println()
+	fmt.Println("All keys are optional. With none configured, searches use DuckDuckGo (ddg),")
+	fmt.Println("which needs no setup. Keyed providers give better results and are tried first.")
+	fmt.Println()
 
 	// --- Search providers ---
 	for {
-		fmt.Println("Search providers (need at least one):")
+		fmt.Println("Search providers (optional):")
 		for i, n := range keys.SearchProviders {
 			fmt.Printf("  %d) %-20s %s\n", i+1, n.Display(), statusLabel(cfg, store, n))
 		}
+		fmt.Printf("  -  %-20s %s\n", "DuckDuckGo (ddg)", "[always available, no key]")
 		fmt.Println("  s) Skip to Jev key")
 		fmt.Println()
 
@@ -77,12 +84,13 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 	}
 
 	if len(store.ConfiguredProviders()) == 0 && len(cfg.Keys.ConfiguredProviders()) == 0 {
-		fmt.Println("  ⚠ No search provider configured yet — searches will fail until you add one.")
+		fmt.Println("  No keyed provider configured — searches will use DuckDuckGo (ddg).")
 	}
 	fmt.Println()
 
 	// --- Jev ---
 	fmt.Printf("Jev (TypeSafe) configuration: %s\n", statusLabel(cfg, store, keys.Jev))
+	fmt.Println("  Jev filters results for relevance. Optional: without it, pass --no-filter.")
 	if store.Has(keys.Jev) {
 		ans, err := keys.PromptLine("  Replace existing Jev key? [y/N]: ")
 		if err != nil {
@@ -116,17 +124,29 @@ func pickProvider(choice string) (keys.Name, bool) {
 	return "", false
 }
 
-// configureKey prompts for a key, validates it, and stores it. Returns nil if the
-// user chose to skip. Only ErrCancelled propagates as an error.
+// configureKey prompts for a key (or, for SearXNG, an instance URL),
+// validates it, and stores it. Returns nil if the user chose to skip. Only
+// ErrCancelled propagates as an error.
 func configureKey(ctx context.Context, cfg *config.Config, store *keys.Store, n keys.Name, validate bool) error {
 	for {
-		key, err := keys.PromptMasked(fmt.Sprintf("  %s API key: ", n.Display()))
+		var key string
+		var err error
+		if n.Secret() {
+			key, err = keys.PromptMasked(fmt.Sprintf("  %s API key: ", n.Display()))
+		} else {
+			key, err = keys.PromptLine(fmt.Sprintf("  %s (e.g. http://localhost:8080): ", n.Display()))
+			key = strings.TrimSpace(key)
+		}
 		if err != nil {
 			return err
 		}
 		if key == "" {
 			fmt.Println("  (empty — skipped)")
 			return nil
+		}
+		if n == keys.SearXNG && !strings.HasPrefix(key, "http://") && !strings.HasPrefix(key, "https://") {
+			fmt.Println("  ✗ The SearXNG URL must start with http:// or https://")
+			continue
 		}
 
 		if !validate {
@@ -169,6 +189,9 @@ func statusLabel(cfg *config.Config, store *keys.Store, n keys.Name) string {
 	}
 	if store.Has(n) {
 		return "[configured " + keys.Mask(store.Get(n)) + "]"
+	}
+	if cfg.KeySource[n] == "config" {
+		return "[set in config.yaml: " + cfg.Keys.Get(n) + "]"
 	}
 	return "[not set]"
 }

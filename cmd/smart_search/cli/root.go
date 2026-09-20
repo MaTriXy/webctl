@@ -26,10 +26,14 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "smart_search [flags] <query>",
 		Short: "Web search qualified by Jev's typed relevance scoring",
-		Long: `smart_search queries Exa, Parallel, or Sonar (Perplexity) and passes each
-result through Jev — TypeSafe's System One model — for typed, probabilistic
-relevance qualification. Low-scoring results are dropped so you spend fewer
-context tokens downstream.
+		Long: `smart_search queries a web search backend (Exa, Parallel, Sonar, DuckDuckGo,
+or a self-hosted SearXNG) and passes each result through Jev — TypeSafe's
+System One model — for typed, probabilistic relevance qualification.
+Low-scoring results are dropped so you spend fewer context tokens downstream.
+
+With no keys configured, DuckDuckGo is used and --no-filter skips Jev.
+Add --scrape to fetch page text, and --filter-chunks to keep only the
+relevant parts.
 
 Get started:
   smart_search setup

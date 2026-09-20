@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -88,8 +89,8 @@ func newKeysCmd() *cobra.Command {
 
 	var setValue string
 	set := &cobra.Command{
-		Use:   "set <exa|parallel|sonar|jev>",
-		Short: "Set a key (prompts with masked input unless --value is given)",
+		Use:   "set <exa|parallel|sonar|searxng|jev>",
+		Short: "Set a key or the SearXNG URL (prompts with masked input unless --value is given)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, err := keys.Parse(args[0])
@@ -102,7 +103,12 @@ func newKeysCmd() *cobra.Command {
 			}
 			val := setValue
 			if val == "" {
-				val, err = keys.PromptMasked(fmt.Sprintf("%s API key: ", name.Display()))
+				if name.Secret() {
+					val, err = keys.PromptMasked(fmt.Sprintf("%s API key: ", name.Display()))
+				} else {
+					val, err = keys.PromptLine(fmt.Sprintf("%s: ", name.Display()))
+					val = strings.TrimSpace(val)
+				}
 				if err != nil {
 					return err
 				}
@@ -125,7 +131,7 @@ func newKeysCmd() *cobra.Command {
 	set.Flags().StringVar(&setValue, "value", "", "key value (avoid in shared shells; prefer the masked prompt)")
 
 	unset := &cobra.Command{
-		Use:   "unset <exa|parallel|sonar|jev>",
+		Use:   "unset <exa|parallel|sonar|searxng|jev>",
 		Short: "Remove a key from keys.json",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -151,7 +157,7 @@ func newKeysCmd() *cobra.Command {
 	}
 
 	validate := &cobra.Command{
-		Use:   "validate [exa|parallel|sonar|jev]",
+		Use:   "validate [exa|parallel|sonar|searxng|jev]",
 		Short: "Validate configured keys with a lightweight API call",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
