@@ -15,11 +15,9 @@ func newCooldownCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cooldown",
 		Short: "Show providers that are being skipped after rate limits",
-		Long: `A provider that answers 429 (rate limited) or 402 (quota spent) is skipped
-for a growing window: cooldown.steps, one step per consecutive failure, up to
-the last step. At the top of the ladder one probe request is allowed every
-cooldown.probe_interval. Any success resets the provider. State is kept in
-<config dir>/cooldown.json so every process on the machine honors it.`,
+		Long: `A provider that answers 429 or 402 is skipped for a growing window
+(cooldown.steps), with one probe per cooldown.probe_interval at the top.
+State: <config dir>/cooldown.json. See "docs cooldowns".`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadConfig()

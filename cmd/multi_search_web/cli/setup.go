@@ -18,9 +18,9 @@ func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Interactive wizard to configure and validate API keys",
-		Long: `Walks you through adding API keys for search providers (Exa, Parallel, Sonar),
-a self-hosted SearXNG URL, and Jev. Everything is optional: with no keys at
-all, searches use DuckDuckGo (ddg) and --no-filter skips Jev.
+		Long: `Walks you through the Jev key (required: Jev is the filter) and the optional
+search keys (Exa, Parallel, Sonar, You.com) and SearXNG URL that lift the
+keyless providers' rate limits.
 
 Key input is masked, each entry is validated with a lightweight API call, and
 settings are stored in ~/secrets/keys.json with mode 0600.

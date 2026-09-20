@@ -30,18 +30,18 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "multi_search_web [flags] <query>",
 		Short: "Web search qualified by Jev's typed relevance scoring",
-		Long: `multi_search_web queries a web search backend (Exa, Parallel, Sonar, DuckDuckGo,
-or a self-hosted SearXNG) and passes each result through Jev — TypeSafe's
-System One model — for typed, probabilistic relevance qualification.
-Low-scoring results are dropped so you spend fewer context tokens downstream.
+		Long: `Searches several web providers at once, folds duplicates, and has Jev
+(TypeSafe's System One model) score every result for topic and source
+quality, so only results worth reading reach your context window.
 
-With no keys configured, DuckDuckGo is used and --no-filter skips Jev.
-Add --scrape to fetch page text, and --filter-chunks to keep only the
-relevant parts.
+Required: a Jev key (multi_search_web setup). Nothing else: search runs on
+keyless Exa, Parallel, and You.com; search keys or a local SearXNG only
+lift their rate limits. Throttled providers back off (see "cooldown").
 
-Get started:
-  multi_search_web setup
-  multi_search_web "latest advances in mechanistic interpretability"`,
+Help text is short by design. The full reference is compiled in:
+  multi_search_web docs            topics
+  multi_search_web docs <topic>    one page (search, providers, config, ...)
+  multi_search_web docs all        everything`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -54,13 +54,14 @@ Get started:
 		},
 	}
 	root.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default ~/multi_search_web)")
-	root.PersistentFlags().StringVar(&keysFile, "keys-file", "", "API keys file (default ~/secrets/keys.json)")
+	root.PersistentFlags().StringVar(&keysFile, "keys-file", "", "keys file (default ~/secrets/keys.json)")
 
 	addSearchFlags(root)
 	root.AddCommand(newSetupCmd())
 	root.AddCommand(newKeysCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newCooldownCmd())
+	root.AddCommand(newDocsCmd())
 	root.AddCommand(newEvalCmd())
 	return root
 }

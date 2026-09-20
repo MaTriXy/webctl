@@ -46,21 +46,10 @@ func newEvalCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "eval [case-name ...]",
 		Short: "Run search-quality evals (live provider + Jev calls)",
-		Long: `Runs each eval case through one provider search and then three stages:
-
-  nofilter  the raw results, as they would reach a context window without Jev
-  filter    Jev qualification and threshold (the default pipeline)
-  scrape    for cases marked scrape: fetch kept pages, keep Jev-approved chunks
-
-Each stage records what it would deliver (results, characters, junk-domain
-hits) and asks Jev in one batch request whether that delivery covers the
-case's expected themes. A case passes when its filter stage passes. Every
-stage is stored in a SQLite database tagged with the multi_search_web version.
-Provider results are cached in that database for 24h so repeated runs
-judge identical inputs; --fresh searches again.
-
-Cases are YAML files embedded from evals/cases/, or a directory given with
---cases. See evals/README.md for the case format.`,
+		Long: `Runs each case through search, then the nofilter, filter, and scrape stages,
+stores every stage in a SQLite database keyed by version, and passes a case
+when its filter stage passes. Provider results are cached for 24h (--fresh
+to search again). See "docs evals" and evals/README.md.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cases, err := evals.EmbeddedCases()

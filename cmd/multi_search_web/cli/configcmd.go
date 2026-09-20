@@ -251,10 +251,9 @@ func effective(cfg *config.Config, file map[string]any, key string) (any, string
 func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Show or change settings in config.yaml (provider, num, min_score, jev.*, searxng_url, keys_file)",
-		Long: `Reads and writes ~/multi_search_web/config.yaml. Settings resolve in this order:
-command-line flags, MULTI_SEARCH_WEB_* environment variables, config.yaml, then
-built-in defaults. API keys live in the keys file instead; see "multi_search_web keys".`,
+		Short: "Show, get, set, or unset settings in config.yaml",
+		Long: `Precedence: flag, MULTI_SEARCH_WEB_* env, config.yaml, default. "config list"
+names every setting; "docs config" explains them. Keys live elsewhere: see "keys".`,
 	}
 
 	show := &cobra.Command{

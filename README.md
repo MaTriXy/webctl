@@ -50,14 +50,11 @@ go install github.com/dorkitude/multi_search_web/cmd/multi_search_web@latest
 ## Quick start
 
 ```bash
+multi_search_web setup        # asks for your Jev key; stored in ~/secrets/keys.json (0600)
 multi_search_web "latest advances in mechanistic interpretability"
 ```
 
-Zero config: with no keys, Exa and Parallel are used over their keyless endpoints, with DuckDuckGo as a last resort. Add a Jev key to enable filtering, and search API keys to lift rate limits:
-
-```bash
-multi_search_web setup        # interactive; keys stored in ~/secrets/keys.json (0600)
-```
+One thing is required: a Jev key (from [typesafe.ai](https://typesafe.ai)), because Jev is the filter. Nothing else is. Search runs on the keyless Exa, Parallel, and You.com endpoints, with DuckDuckGo as a last resort; search API keys or a local SearXNG only lift rate limits.
 
 | Setting | Env var | Needed for |
 |---|---|---|
@@ -67,7 +64,7 @@ multi_search_web setup        # interactive; keys stored in ~/secrets/keys.json 
 
 The keys file may be shared with other tools; unknown fields are preserved. Point elsewhere with `--keys-file`, `MULTI_SEARCH_WEB_KEYS_FILE`, or `keys_file` in `~/multi_search_web/config.yaml`.
 
-Without a Jev key, pass `--no-filter` to get raw results.
+`--no-filter` returns raw fused results and is the only mode that works without a Jev key.
 
 ## Backends
 
@@ -159,6 +156,16 @@ multi_search_web --json "q" | jq '.[].url'   # JSON array (adds content/chunks_t
 multi_search_web --urls-only "q"             # one URL per line
 multi_search_web --verbose "q"               # show probabilities and dropped results
 multi_search_web -n 20 "q"                   # results to request
+```
+
+## Docs
+
+`--help` is short on purpose. The full reference is compiled into the binary and mirrors `docs/`:
+
+```bash
+multi_search_web docs            # topics
+multi_search_web docs providers  # one page
+multi_search_web docs all        # everything, in reading order
 ```
 
 ## Other commands
