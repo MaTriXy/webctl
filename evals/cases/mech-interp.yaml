@@ -6,4 +6,4 @@ expected_themes:
   - sparse autoencoders or dictionary learning for feature discovery
   - transformer circuits or attention head analysis
 min_results: 3
-max_results: 15
+max_results: 20

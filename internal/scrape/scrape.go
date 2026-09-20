@@ -22,7 +22,7 @@ import (
 // Defaults.
 const (
 	DefaultMaxChars    = 50000
-	DefaultTimeout     = 20 * time.Second
+	DefaultTimeout     = 10 * time.Second
 	DefaultConcurrency = 4
 	maxBodyBytes       = 8 << 20
 	userAgent          = "Mozilla/5.0 (compatible; smart_search/1.0; +https://github.com/dorkitude/smart_search)"

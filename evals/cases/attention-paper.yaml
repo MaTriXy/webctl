@@ -6,4 +6,4 @@ expected_themes:
   - the original 2017 Transformer paper by Vaswani et al. (arXiv 1706.03762)
   - self-attention or multi-head attention mechanism
 min_results: 1
-max_results: 8
+max_results: 10

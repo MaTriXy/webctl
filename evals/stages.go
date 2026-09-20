@@ -196,7 +196,7 @@ func (r *Runner) stageNoFilter(ctx context.Context, c Case, results []provider.S
 // stageFilter qualifies results with Jev, keeps those at or above the
 // case threshold, and checks count bounds, theme coverage, junk, and
 // expected-domain retention.
-func (r *Runner) stageFilter(ctx context.Context, c Case, results []provider.SearchResult, flagged map[string]bool) (st Stage, out []KeptResult, err error) {
+func (r *Runner) stageFilter(ctx context.Context, c Case, results []provider.SearchResult, flagged map[string]bool) (st Stage, out []KeptResult, judged []KeptResult, err error) {
 	start := time.Now()
 	st = Stage{Mode: ModeFilter}
 	defer func() { st.Duration = time.Since(start) }()
@@ -210,15 +210,20 @@ func (r *Runner) stageFilter(ctx context.Context, c Case, results []provider.Sea
 		})
 		st.Usage.Add(usage)
 		if err != nil {
-			return st, nil, fmt.Errorf("qualify: %w", err)
+			return st, nil, nil, fmt.Errorf("qualify: %w", err)
 		}
 		min := c.threshold()
 		for _, q := range qualified {
-			if q.Err == nil && (q.Score != nil || q.Noul != nil) && q.Value() >= min {
+			if q.Err != nil || (q.Score == nil && q.Noul == nil) {
+				continue
+			}
+			judged = append(judged, KeptResult{SearchResult: q.Result, Value: q.Value(), Confidence: q.Confidence()})
+			if q.Value() >= min {
 				kept = append(kept, q)
 			}
 		}
 		sort.SliceStable(kept, func(i, j int) bool { return kept[i].Value() > kept[j].Value() })
+		sort.SliceStable(judged, func(i, j int) bool { return judged[i].Value > judged[j].Value })
 	}
 	out = make([]KeptResult, 0, len(kept))
 	plain := make([]provider.SearchResult, 0, len(kept))
@@ -249,10 +254,10 @@ func (r *Runner) stageFilter(ctx context.Context, c Case, results []provider.Sea
 		}
 	}
 	if err := r.judge(ctx, c, &st, plain); err != nil {
-		return st, nil, err
+		return st, nil, nil, err
 	}
 	st.Passed = len(st.Failures) == 0
-	return st, out, nil
+	return st, out, judged, nil
 }
 
 // stageScrape fetches each kept result's page, keeps the chunks Jev judges

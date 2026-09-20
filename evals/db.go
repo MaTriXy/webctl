@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS results (
 	tokens_out    INTEGER DEFAULT 0,
 	error         TEXT DEFAULT '',
 	failures      TEXT DEFAULT '',
-	urls          TEXT DEFAULT ''
+	urls          TEXT DEFAULT '',
+	judged        TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS results_version_case ON results(version, "case", mode);
 `
@@ -119,19 +120,28 @@ func (d *DB) RecordReport(ctx context.Context, runID int64, rep *Report) error {
 			runID, rep.Version, rep.Case, tags, "", rep.Provider, rep.Duration.Milliseconds(), rep.SearchDuration.Milliseconds(), rep.Error)
 		return err
 	}
+	judged := ""
+	if len(rep.Judged) > 0 {
+		b, _ := json.Marshal(rep.Judged)
+		judged = string(b)
+	}
 	for _, st := range rep.Stages {
 		urls, _ := json.Marshal(st.URLs)
+		stJudged := ""
+		if st.Mode == ModeFilter {
+			stJudged = judged
+		}
 		stErr := st.Error
 		if stErr == "" && rep.Error != "" {
 			stErr = rep.Error
 		}
 		_, err := d.sql.ExecContext(ctx, `INSERT INTO results (run_id, version, "case", tags, mode, provider, passed, results, chars, junk, flagged, expected_hits,
-			themes_total, themes_covered, pages_ok, pages_failed, chunks_total, chunks_kept, chars_raw, duration_ms, search_ms, tokens_in, tokens_out, error, failures, urls)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			themes_total, themes_covered, pages_ok, pages_failed, chunks_total, chunks_kept, chars_raw, duration_ms, search_ms, tokens_in, tokens_out, error, failures, urls, judged)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			runID, rep.Version, rep.Case, tags, string(st.Mode), rep.Provider, boolInt(st.Passed && stErr == ""), st.Results, st.Chars, st.Junk, st.Flagged, st.ExpectedHits,
 			len(st.Themes), st.Covered, st.PagesOK, st.PagesFailed, st.ChunksTotal, st.ChunksKept, st.CharsRaw,
 			st.Duration.Milliseconds(), rep.SearchDuration.Milliseconds(), st.Usage.InputTokens, st.Usage.OutputTokens,
-			stErr, strings.Join(st.Failures, "\n"), string(urls))
+			stErr, strings.Join(st.Failures, "\n"), string(urls), stJudged)
 		if err != nil {
 			return fmt.Errorf("insert result: %w", err)
 		}

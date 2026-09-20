@@ -21,6 +21,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/dorkitude/smart_search/internal/config"
 	"github.com/dorkitude/smart_search/internal/jev"
 	"github.com/dorkitude/smart_search/internal/prompts"
 	"github.com/dorkitude/smart_search/internal/provider"
@@ -111,7 +112,7 @@ func (c *Case) threshold() float64 {
 	if c.Noul != "" {
 		return 0.5
 	}
-	return 1.0
+	return config.DefaultMinScore
 }
 
 // ParseCase decodes one YAML case. name is used when the YAML omits "name".
@@ -345,10 +346,13 @@ type Report struct {
 	AuditError string  `json:"audit_error,omitempty"`
 	Stages     []Stage `json:"stages,omitempty"`
 
-	TotalResults int           `json:"total_results"`
-	KeptResults  int           `json:"kept_results"`
-	Kept         []KeptResult  `json:"kept"`
-	Themes       []ThemeResult `json:"themes"`
+	TotalResults int          `json:"total_results"`
+	KeptResults  int          `json:"kept_results"`
+	Kept         []KeptResult `json:"kept"`
+	// Judged is every result with Jev's relevance value, best first,
+	// including the ones the threshold dropped.
+	Judged []KeptResult  `json:"judged,omitempty"`
+	Themes []ThemeResult `json:"themes"`
 	// Confidence is the mean of Jev's confidence across theme judgments (or,
 	// with no themes, across relevance judgments of kept results).
 	Confidence float64 `json:"confidence"`
@@ -417,7 +421,7 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 		case ModeNoFilter:
 			rep.Stages = append(rep.Stages, r.stageNoFilter(ctx, c, results, flagged))
 		case ModeFilter:
-			st, k, err := r.stageFilter(ctx, c, results, flagged)
+			st, k, judged, err := r.stageFilter(ctx, c, results, flagged)
 			rep.Stages = append(rep.Stages, st)
 			if err != nil {
 				return fail(err)
@@ -425,6 +429,7 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 			kept, filtered = k, true
 			rep.KeptResults = len(kept)
 			rep.Kept = kept
+			rep.Judged = judged
 			rep.Themes = st.Themes
 			rep.Failures = st.Failures
 			rep.Confidence = confidence(st.Themes, kept)
@@ -434,11 +439,12 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 				continue
 			}
 			if !filtered {
-				st, k, err := r.stageFilter(ctx, c, results, flagged)
+				st, k, judged, err := r.stageFilter(ctx, c, results, flagged)
 				if err != nil {
 					return fail(err)
 				}
 				kept, filtered = k, true
+				rep.Judged = judged
 				rep.Usage.Add(st.Usage)
 			}
 			st := r.stageScrape(ctx, c, kept, flagged)
@@ -649,8 +655,12 @@ func WriteReport(w io.Writer, rep *Report, verbose bool) {
 		fmt.Fprintf(w, "    ✗ %s\n", f)
 	}
 	if verbose {
-		for i, k := range rep.Kept {
-			fmt.Fprintf(w, "    [%d] %.2f  %s\n", i+1, k.Value, k.URL)
+		for i, k := range rep.Judged {
+			mark := "drop"
+			if i < len(rep.Kept) {
+				mark = "keep"
+			}
+			fmt.Fprintf(w, "    [%d] %.2f %s  %s\n", i+1, k.Value, mark, k.URL)
 		}
 		fmt.Fprintf(w, "    jev usage: %d input / %d output tokens\n", rep.Usage.InputTokens, rep.Usage.OutputTokens)
 	}

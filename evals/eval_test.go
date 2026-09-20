@@ -11,6 +11,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/dorkitude/smart_search/internal/config"
 	"github.com/dorkitude/smart_search/internal/jev"
 	"github.com/dorkitude/smart_search/internal/provider"
 )
@@ -338,7 +339,7 @@ func TestRunAllAndSummary(t *testing.T) {
 		"✓ PASS  sae", "themes 2/2", "✓ sparse autoencoders", "P(yes)=0.93",
 		"✗ FAIL  fails", "✗ too few results: 2 kept, need ≥ 10",
 		"! ERROR broken", "nope",
-		"[1] 2.80  https://arxiv.org/abs/1", "jev usage:",
+		"[1] 2.80 keep  https://arxiv.org/abs/1", "jev usage:",
 		"1/3 passed, 1 failed, 1 errored",
 	} {
 		if !strings.Contains(out, want) {
@@ -366,7 +367,7 @@ func TestParseCase(t *testing.T) {
 	if c.threshold() != 2 {
 		t.Errorf("threshold = %v", c.threshold())
 	}
-	if (&Case{}).threshold() != 1 || (&Case{Noul: "x"}).threshold() != 0.5 {
+	if (&Case{}).threshold() != config.DefaultMinScore || (&Case{Noul: "x"}).threshold() != 0.5 {
 		t.Error("default thresholds wrong")
 	}
 

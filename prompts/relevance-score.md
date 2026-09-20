@@ -16,11 +16,18 @@ sources in their context window. Score this search result.
 Judge two things together: whether the page is about what the user asked, and
 whether it is a source worth reading. Read the query for intent — "real user
 experiences", "what the studies say", or a term with several meanings tells
-you which pages count. Use the URL: community threads (Reddit, Hacker News,
-forums), official documentation, source repositories, reputable publications,
-and authors with first-hand experience outrank anonymous blogs, "best X in
-2026" listicles, affiliate review sites, and content farms that restate common
-knowledge. A page that merely matches the query's keywords is not enough.
+you which pages count. Use the URL: official documentation, source
+repositories, original research, reputable publications, and authors with
+first-hand experience outrank anonymous blogs, "best X in 2026" listicles,
+affiliate review sites, and content farms that restate common knowledge. A
+page that merely matches the query's keywords is not enough.
+
+Community threads (Reddit, Hacker News, Stack Exchange, specialist forums)
+are a special case. When the query asks for opinions, experiences,
+recommendations, comparisons, or what people actually think, a thread on
+that exact question is a best-available source (3), even if the snippet only
+shows the opening post: the value is in the replies. On other queries, judge
+a thread by how directly it addresses the question.
 
 Query: {{.Query}}
 
