@@ -1,35 +1,53 @@
 # Providers
 
-Six search backends; three need no key. Every search gathers from several of them. (Jev, the filter, is the one key you must have.)
+Fourteen search backends. Jev, the filter, is the one key you must have; every search backend is optional.
 
 ## Order
 
 Providers are taken in this order, skipping any that are cooling down (see `cooldowns`):
 
 1. A `provider` set in config, if any.
-2. Your own SearXNG, when `searxng_url` is set.
-3. Providers you set a key for, in the order exa, parallel, sonar, youcom.
-4. ketch, a separate CLI that runs its own chain of free tiers.
-5. DuckDuckGo (HTML scrape).
+2. Your own metasearch: `searxng`, then `degoog`, when their URLs are set.
+3. Providers you set a key for, in the order exa, parallel, sonar, youcom, brave, tavily, firecrawl, keenable, serpbase, serply.
+4. `ketch`, a separate CLI that runs its own chain of free tiers.
+5. `ddg`.
 
-The keyless Exa, Parallel, and You.com endpoints are not in the default chain: ketch already rotates through them, and the direct integrations exist for keyed, paid use. Name one with `-p exa` to use it keyless anyway.
+`sources` (default 3) providers are queried at once; a provider that errors or answers empty is replaced by the next. Lists are fused by reciprocal rank (k=60) and each result carries the engines that returned it. `--sources 1` restores a plain fallback chain. Timeouts: 12s per attempt, 30s per search.
 
-`sources` (default 3) providers are queried at once. A provider that errors or answers empty is replaced by the next; fewer are used if fewer exist. Lists are fused by reciprocal rank (k=60) and each result carries the engines that returned it. `--sources 1` restores a plain fallback chain: first provider that answers. Timeouts: 12s per provider attempt, 30s per search.
+Keyless Exa, Parallel, You.com, Firecrawl, and Keenable are not in the default chain: ketch already rotates through them, and the direct integrations are for keyed use. Any of them can be named with `-p` to run keyless.
 
 ## Backends
 
-| name | keyless | key setting | notes |
-|---|---|---|---|
-| `exa` | yes: hosted MCP, about 50 searches per day per IP | `exa` (`EXA_API_KEY`) | neural index; best on research and code queries; returns page excerpts. Keyed: $20 intro credit, $10/month free, $7 per 1,000 |
-| `parallel` | yes: hosted MCP, unpublished daily limit (a few dozen) | `parallel` (`PARALLEL_API_KEY`) | fast (~0.7s), page excerpts; keyed $1 per 1,000 |
-| `youcom` | yes: free profile, unpublished limit (~70/day observed) | `youcom` (`YOUCOM_API_KEY`) | keyword results, short snippets; keyed $5 per 1,000, $100 signup credit |
-| `sonar` | no | `sonar` (`SONAR_API_KEY`) | Perplexity; runs an LLM, 90s timeout |
-| `ketch` | yes | none (ketch's own config) | shells out to `ketch search --json`; ketch tries Parallel, Exa, Keenable, You.com, Firecrawl, then DuckDuckGo. Install: `brew install ketch`. On the eval suite it matched this tool's keyless chain on quality at about half the latency |
-| `ddg` | yes: HTML endpoint, unofficial, soft-blocks around 30/min per IP | none | short snippets; a cookie jar and 202 retry are built in |
-| `searxng` | your own instance | `searxng` (`SEARXNG_URL`) | no quota; results depend on the engines it aggregates; see `searxng` |
+| name | keyless | key / URL setting | env | notes |
+|---|---|---|---|---|
+| `ketch` | yes | none (ketch's own config) | | shells out to `ketch search --json`; ketch tries Parallel, Exa, Keenable, You.com, Firecrawl, then DuckDuckGo. Install: `brew install ketch`. Matched this tool's keyless chain on the eval suite at about half the latency |
+| `searxng` | your instance | `searxng` | `SEARXNG_URL` | no quota; results depend on the engines it aggregates; see `searxng` |
+| `degoog` | your instance | `degoog` | `DEGOOG_URL` | self-hosted Google-style metasearch, `GET /api/search`; no result count parameter |
+| `ddg` | yes | none | | DuckDuckGo HTML endpoint; unofficial, soft-blocks around 30/min per IP and sometimes refuses an address outright; cookie jar and 202 retry built in; short snippets |
+| `exa` | yes, ~50/day per IP | `exa` | `EXA_API_KEY` | neural index; best on research and code queries; 2–8K-char excerpts. Keyed: $20 intro credit, $10/month free, $7 per 1,000, 10 QPS |
+| `parallel` | yes, unpublished daily limit | `parallel` | `PARALLEL_API_KEY` | ~0.7s, 2.8K-char excerpts, 10 results; keyed $1 per 1,000 (fast), 600/min |
+| `youcom` | yes, ~70/day observed | `youcom` | `YOUCOM_API_KEY` | keyword results; keyed $5 per 1,000, $100 signup credit, 10/s |
+| `sonar` | no | `sonar` | `SONAR_API_KEY` | Perplexity; runs an LLM, 90s timeout |
+| `brave` | no | `brave` | `BRAVE_API_KEY` | up to 20 results; $5 credit a month (about 1,000 queries) then $5 per 1,000, 50/s |
+| `tavily` | no | `tavily` | `TAVILY_API_KEY` | agent-oriented, results carry extracted text; 1,000 credits a month free, a basic search is 1 credit, 1/s |
+| `firecrawl` | hosted, IP-gated (often 429/403) | `firecrawl` | `FIRECRAWL_API_KEY` | v2 search; a key lifts the gate; a self-hosted URL is not supported here |
+| `keenable` | yes, hourly cap | `keenable` | `KEENABLE_API_KEY` | index built for agents; ~1.8K-char page text per result; no result count parameter |
+| `serpbase` | no | `serpbase` | `SERPBASE_API_KEY` | Google results; about 10 per request; business errors arrive as HTTP 200 with status 1001 (bad key), 1020 (credits), 1029 (rate limited) and are mapped to 401/402/429 |
+| `serply` | no | `serply` | `SERPLY_API_KEY` | Google results; at most 10 per request |
 
-Keyed use of a provider promotes it to the front of the chain and lifts the keyless caps. `keys validate` makes one lightweight call per configured provider.
+Keyed use of a provider promotes it into the chain and lifts the keyless caps. Setting a key clears that provider's cooldown. `keys validate` makes one lightweight call per configured provider.
+
+## Adding a key
+
+```
+multi_search_web keys set brave            # masked prompt
+multi_search_web keys set tavily --value tvly-...
+multi_search_web keys set searxng --value http://localhost:8899
+multi_search_web keys validate
+```
+
+Or the environment variable from the table, or `setup` for a guided pass over all of them.
 
 ## What Jev sees
 
-Each result reaches Jev as title, URL, and a snippet of up to 600 characters. When a provider returns page text, the snippet starts at the first line that reads like prose, skipping navigation and bylines. The full excerpt is kept as `content` and stands in for a page that cannot be scraped.
+Each result reaches Jev as title, URL, and a snippet of up to 600 characters. When a provider returns page text (Exa, Parallel, Tavily, Keenable, ketch), the snippet starts at the first line that reads like prose, skipping navigation and bylines, and the full excerpt is kept as `content`: it stands in for a page that cannot be scraped and feeds the near-duplicate pass.

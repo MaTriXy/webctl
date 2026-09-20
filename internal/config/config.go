@@ -256,11 +256,11 @@ func (c *Config) ProviderKey(name string) (string, error) {
 	}
 	key := c.Keys.Get(n)
 	if key == "" {
-		if provider.Keyless(name) && n != keys.SearXNG {
+		if provider.Keyless(name) && !n.IsURL() {
 			return "", nil
 		}
-		if n == keys.SearXNG {
-			return "", fmt.Errorf("no SearXNG URL configured: run `multi_search_web setup` or set %s", n.EnvVar())
+		if n.IsURL() {
+			return "", fmt.Errorf("no %s configured: run `multi_search_web setup` or set %s", n.Display(), n.EnvVar())
 		}
 		return "", fmt.Errorf("no %s API key configured: run `multi_search_web setup` or set %s", n.Display(), n.EnvVar())
 	}
@@ -309,9 +309,11 @@ func (c *Config) Chain(explicit string) ([]string, error) {
 		}
 		add(pref)
 	}
-	// Your own SearXNG first: no quota, no cost.
-	if c.Usable("searxng") {
-		add("searxng")
+	// Your own metasearch first: no quota, no cost.
+	for _, own := range []string{"searxng", "degoog"} {
+		if c.Usable(own) {
+			add(own)
+		}
 	}
 	// Paid providers only when you chose to set a key.
 	for _, name := range provider.Keyed() {

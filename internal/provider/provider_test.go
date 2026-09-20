@@ -17,6 +17,7 @@ import (
 type capture struct {
 	Method  string
 	Path    string
+	Query   string
 	Headers http.Header
 	Body    map[string]any
 }
@@ -29,6 +30,7 @@ func mockServer(t *testing.T, status int, body string) (*httptest.Server, *captu
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c.Method = r.Method
 		c.Path = r.URL.Path
+		c.Query = r.URL.RawQuery
 		c.Headers = r.Header.Clone()
 		raw, _ := io.ReadAll(r.Body)
 		c.Body = map[string]any{}

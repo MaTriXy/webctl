@@ -144,8 +144,8 @@ func configureKey(ctx context.Context, cfg *config.Config, store *keys.Store, n 
 			fmt.Println("  (empty — skipped)")
 			return nil
 		}
-		if n == keys.SearXNG && !strings.HasPrefix(key, "http://") && !strings.HasPrefix(key, "https://") {
-			fmt.Println("  ✗ The SearXNG URL must start with http:// or https://")
+		if n.IsURL() && !strings.HasPrefix(key, "http://") && !strings.HasPrefix(key, "https://") {
+			fmt.Printf("  ✗ The %s must start with http:// or https://\n", n.Display())
 			continue
 		}
 

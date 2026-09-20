@@ -53,11 +53,15 @@ const SonarTimeout = 90 * time.Second
 // Names returns the supported provider names in auto-chain order: keyed
 // providers first, then the keyless fallbacks.
 func Names() []string {
-	return []string{"exa", "parallel", "sonar", "youcom", "ketch", "ddg", "searxng"}
+	return []string{"exa", "parallel", "sonar", "youcom", "brave", "tavily", "firecrawl", "keenable", "serpbase", "serply", "ketch", "ddg", "searxng", "degoog"}
 }
 
 // Keyed lists the providers that require an API key.
-func Keyed() []string { return []string{"exa", "parallel", "sonar"} }
+// Exa, Parallel, You.com, Firecrawl, and Keenable also run keyless when
+// named explicitly.
+func Keyed() []string {
+	return []string{"exa", "parallel", "sonar", "youcom", "brave", "tavily", "firecrawl", "keenable", "serpbase", "serply"}
+}
 
 // Normalize lowercases and trims a provider name, resolving aliases.
 func Normalize(name string) string {
@@ -77,7 +81,7 @@ func Normalize(name string) string {
 // Exa and Parallel fall back to their hosted MCP endpoints without one.
 func Keyless(name string) bool {
 	switch Normalize(name) {
-	case "ddg", "searxng", "exa", "parallel", "youcom", "ketch":
+	case "ddg", "searxng", "degoog", "exa", "parallel", "youcom", "ketch", "firecrawl", "keenable":
 		return true
 	}
 	return false
@@ -95,12 +99,21 @@ func New(name, cred string, opts Options) (Provider, error) {
 			return nil, errors.New("searxng: instance URL is empty")
 		}
 		return NewSearXNG(cred, opts), nil
+	case "degoog":
+		if cred == "" && opts.BaseURL == "" {
+			return nil, errors.New("degoog: instance URL is empty")
+		}
+		return NewDegoog(cred, opts), nil
 	case "exa":
 		return NewExa(cred, opts), nil
 	case "parallel":
 		return NewParallel(cred, opts), nil
 	case "youcom":
 		return NewYoucom(cred, opts), nil
+	case "firecrawl":
+		return NewFirecrawl(cred, opts), nil
+	case "keenable":
+		return NewKeenable(cred, opts), nil
 	case "ketch":
 		return NewKetch(cred, opts), nil
 	}
@@ -110,6 +123,14 @@ func New(name, cred string, opts Options) (Provider, error) {
 	switch Normalize(name) {
 	case "sonar":
 		return NewSonar(cred, opts), nil
+	case "brave":
+		return NewBrave(cred, opts), nil
+	case "tavily":
+		return NewTavily(cred, opts), nil
+	case "serpbase":
+		return NewSerpBase(cred, opts), nil
+	case "serply":
+		return NewSerply(cred, opts), nil
 	}
 	names := Names()
 	sort.Strings(names)

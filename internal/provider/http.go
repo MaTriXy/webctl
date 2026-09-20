@@ -40,7 +40,8 @@ func (e *APIError) Error() string {
 
 // keySlug is the `keys set` name for keyed providers, "" for the rest.
 func (e *APIError) keySlug() string {
-	return map[string]string{"Exa": "exa", "Parallel": "parallel", "You.com": "youcom", "Sonar": "sonar"}[e.Provider]
+	return map[string]string{"Exa": "exa", "Parallel": "parallel", "You.com": "youcom", "Sonar": "sonar", "Brave": "brave", "Tavily": "tavily",
+		"Firecrawl": "firecrawl", "Keenable": "keenable", "SerpBase": "serpbase", "Serply": "serply"}[e.Provider]
 }
 
 // keyHint names the command that lifts a provider's keyless limits.
@@ -113,6 +114,40 @@ func postJSON(ctx context.Context, client *http.Client, providerName, url string
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return &APIError{Provider: providerName, Status: resp.StatusCode, Body: summarizeBody(snippet)}
+	}
+	if out == nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("%s: decode response: %w", providerName, err)
+	}
+	return nil
+}
+
+// getJSON GETs url and decodes a 2xx JSON response into out. Non-2xx
+// responses become *APIError.
+func getJSON(ctx context.Context, client *http.Client, providerName, url string, headers map[string]string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("%s: build request: %w", providerName, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "multi_search_web/1.0 (+https://github.com/dorkitude/multi_search_web)")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("%s: request timed out: %w", providerName, err)
+		}
+		return fmt.Errorf("%s: request failed: %w", providerName, err)
+	}
+	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return &APIError{Provider: providerName, Status: resp.StatusCode, Body: summarizeBody(snippet)}

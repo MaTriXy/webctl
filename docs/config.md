@@ -13,6 +13,7 @@ Settings resolve in this order: command-line flag, `MULTI_SEARCH_WEB_*` environm
 | `jev.base_url` | `MULTI_SEARCH_WEB_JEV_BASE_URL` | `https://api.typesafe.ai` | Jev API root |
 | `jev.model` | `MULTI_SEARCH_WEB_JEV_MODEL` | `jev-latest` | Jev model |
 | `searxng_url` | `SEARXNG_URL` | (none) | SearXNG instance; the keys file's `searxng_url` wins |
+| (keys file) `degoog_url` | `DEGOOG_URL` | (none) | Degoog instance |
 | `keys_file` | `MULTI_SEARCH_WEB_KEYS_FILE` | `~/secrets/keys.json` | where keys live |
 | `cooldown.enabled` | `MULTI_SEARCH_WEB_COOLDOWN_ENABLED` | true | skip rate-limited providers |
 | `cooldown.steps` | `MULTI_SEARCH_WEB_COOLDOWN_STEPS` | `15m,1h,4h,12h,24h,72h` | window per consecutive failure |
@@ -44,7 +45,7 @@ multi_search_web config path
 
 ## Keys
 
-`~/secrets/keys.json` (mode 0600), shared with other tools; fields this tool does not know are preserved. Fields: `exa_api_key`, `parallel_api_key`, `sonar_api_key`, `youcom_api_key`, `searxng_url`, `jev_api_key`. Environment overrides: `EXA_API_KEY`, `PARALLEL_API_KEY`, `SONAR_API_KEY`, `YOUCOM_API_KEY`, `SEARXNG_URL`, `JEV_API_KEY`.
+`~/secrets/keys.json` (mode 0600), shared with other tools; fields this tool does not know are preserved. Fields: `jev_api_key`, `exa_api_key`, `parallel_api_key`, `sonar_api_key`, `youcom_api_key`, `brave_api_key`, `tavily_api_key`, `firecrawl_api_key`, `keenable_api_key`, `serpbase_api_key`, `serply_api_key`, `searxng_url`, `degoog_url`. Environment overrides: the same names upper-cased without the `_api` (`JEV_API_KEY`, `EXA_API_KEY`, ... `SEARXNG_URL`, `DEGOOG_URL`); see `providers` for the full table.
 
 ```
 multi_search_web setup                  # interactive wizard, validates each key

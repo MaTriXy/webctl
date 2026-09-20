@@ -89,7 +89,7 @@ func newKeysCmd() *cobra.Command {
 
 	var setValue string
 	set := &cobra.Command{
-		Use:   "set <exa|parallel|sonar|searxng|jev>",
+		Use:   "set <provider|jev>",
 		Short: "Set a key or the SearXNG URL (prompts with masked input unless --value is given)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
