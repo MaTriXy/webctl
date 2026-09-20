@@ -17,7 +17,7 @@ By default, webctl will try 3 web search backends.  Each result set is passed (w
 
 Optionally, webctl can also scrape the result pages so your agent doesn't have to fetch them.  It then parses out the textual content, divides it into chunks, and sends batches of those chunks (plus the original query and goal context) to Jev for scoring.  High-scoring results are returned.  For some workloads (think long PDFs, long Reddit/StackOverflow comment threads, entire Wikipedia articles, etc), this can save an *enormous* number of tokens.
 
-It's MIT-licensed and free to you.  Feel free to submit a PR if I missed something!  And if I miss the PR, hit me up [@dorkitude](https://x.com/dorkitude) and I'll get to it ASAP.
+Feel free to submit a PR if I missed something!  And if I miss the PR, hit me up [@dorkitude](https://x.com/dorkitude) and I'll get to it ASAP.
 
 - [Quick start](#quick-start)
 - [Installation](#installation)
