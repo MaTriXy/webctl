@@ -230,6 +230,8 @@ type Runner struct {
 	// Audit runs the source-quality audit on raw results (one extra Jev
 	// batch call per case) so stages can count flagged pages.
 	Audit bool
+	// ScrapeAll runs the scrape stage on every case, not only those marked.
+	ScrapeAll bool
 	// ReuseSearches, when set, supplies each case's raw provider results
 	// (by case name) from an earlier run, so this run judges identical
 	// inputs. Cases not present are searched live.
@@ -335,6 +337,8 @@ type Stage struct {
 	// DroppedCovered counts expected themes that the discarded chunks still
 	// cover: signal the chunk filter threw away. Lower is better.
 	DroppedCovered int `json:"dropped_covered,omitempty"`
+	// PageFailures lists "host: reason" for pages that could not be fetched.
+	PageFailures []string `json:"page_failures,omitempty"`
 }
 
 // Report is the outcome of one case. The top-level fields describe the
@@ -454,7 +458,7 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 			rep.Confidence = confidence(st.Themes, kept)
 			rep.Usage.Add(st.Usage)
 		case ModeScrape:
-			if !c.Scrape {
+			if !c.Scrape && !r.ScrapeAll {
 				continue
 			}
 			if !filtered {

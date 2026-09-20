@@ -49,6 +49,7 @@ func newEvalCmd() *cobra.Command {
 		notes     string
 		reuse     string
 		noSave    bool
+		scrapeAll bool
 	)
 	cmd := &cobra.Command{
 		Use:   "eval [case-name ...]",
@@ -111,10 +112,13 @@ See "docs evals" and evals/README.md.`,
 				Parallel:          parallel,
 				Version:           version_.Version,
 				Audit:             true,
+				ScrapeAll:         scrapeAll,
 				Scraper:           &scrape.Fetcher{},
 				NewProvider: func(name string) (provider.Provider, error) {
 					if name == "" {
-						return newChain(cfg, chain, cmd.ErrOrStderr(), verbose), nil
+						c := newChain(cfg, chain, cmd.ErrOrStderr(), verbose)
+						c.Sources = cfg.Sources
+						return c, nil
 					}
 					return newProvider(cfg, name)
 				},
@@ -185,6 +189,7 @@ See "docs evals" and evals/README.md.`,
 	f.StringVar(&notes, "notes", "", "note stored with the run")
 	f.StringVar(&reuse, "reuse-searches", "", "judge the provider results of this run again: an id, \"latest\", \"latest:<version>\", or a file")
 	f.BoolVar(&noSave, "no-save", false, "do not write a run file")
+	f.BoolVar(&scrapeAll, "scrape-all", false, "run the scrape stage on every case, not only those marked scrape: true")
 	cmd.AddCommand(newEvalReportCmd())
 	return cmd
 }

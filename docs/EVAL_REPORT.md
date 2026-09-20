@@ -101,6 +101,17 @@ The chunk filter removes 22 to 30 percent of fetched text and the kept text cove
 
 Fetch failures are bot walls and PDFs: DOI resolvers and publishers answer 403, and academic PDFs are not parsed. Since 0.0.003 a page that cannot be fetched falls back to the provider's own excerpt, so those results still contribute text (the `seo-protein-intake` scrape stage passed with 13 of 16 fetches failing). Reddit specifically is handled: the JavaScript challenge is solved and the comment tree, which ships inside a `<template>` element, is read.
 
+## Scrape vs. no scrape
+
+Two runs on 2026-09-20 with the scrape stage forced on all 29 cases, comparing what the filter stage delivered (title, URL, and the provider's snippet or excerpt) against the scraped, chunk-filtered pages of the same kept results. Jev judged theme coverage on both.
+
+| provider | themes covered: filter → scrape | chars to context: filter → scrape (raw pages) | Jev input tokens: filter → scrape | avg stage time | pages fetched / failed |
+|---|---|---|---|---|---|
+| Parallel (2.8K-char excerpts per result) | 55/57 → 51/57 (better on 0 cases, worse on 4) | 86,796 → 1,303,936 (1,971,553) | 572K → 1,454K | 0.46s → 1.9s | 124 / 31 (20%) |
+| SearXNG (170-char Google snippets) | 51/57 → 54/57 (better on 4, worse on 2) | 31,068 → 1,262,669 (2,068,892) | 463K → 1,533K | 0.54s → 1.6s | 140 / 22 (14%) |
+
+Reading: when the provider already returns excerpts, scraping adds nothing Jev can detect and costs about 15× the context, 2.5× the Jev tokens, and 4× the time. When the provider returns snippets only, scraping recovers coverage the snippets could not show (`reddit-nyc-neighborhood` went from 0 to 2 themes). The chunk filter removes 34 to 39 percent of fetched text. Fetch failures are bot walls (arXiv, Britannica, Stack Overflow, Forbes, IEEE, NASA answer 403), PDFs, and pages with no readable text (Facebook); a failed fetch falls back to the provider excerpt. Caveat: the theme judge reads at most 2,500 characters per result in both stages, so a long page whose relevant passage sits past that cap can judge worse than its own snippet.
+
 ## Speed
 
 | stage | avg ms per case (run 13) | avg ms per case (run 4, Exa) |

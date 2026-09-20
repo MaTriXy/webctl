@@ -374,6 +374,9 @@ func (r *Runner) stageScrape(ctx context.Context, c Case, kept []KeptResult, fla
 		text := pages[i].Content
 		if pages[i].Err != nil {
 			st.PagesFailed++
+			if u, err := url.Parse(kept[i].URL); err == nil {
+				st.PageFailures = append(st.PageFailures, u.Hostname()+": "+pages[i].Err.Error())
+			}
 			text = kept[i].Content
 		} else {
 			st.PagesOK++
