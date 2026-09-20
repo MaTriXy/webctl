@@ -530,10 +530,11 @@ func searchMulti(ctx context.Context, cfg *config.Config, chain []string, query 
 	return strings.Join(names, "+"), results, engines, nil
 }
 
-// Chain timing, overridable by tests.
+// Chain timing and top-up, overridable by tests.
 var (
 	attemptTimeout = provider.DefaultAttemptTimeout
 	chainBudget    = provider.DefaultChainBudget
+	chainTopUp     = true
 )
 
 // newChain wraps chain in a lazily-constructed provider.Chain that reports
@@ -544,6 +545,7 @@ func newChain(cfg *config.Config, chain []string, errOut io.Writer) *provider.Ch
 		New:            func(name string) (provider.Provider, error) { return newProvider(cfg, name) },
 		AttemptTimeout: attemptTimeout,
 		Budget:         chainBudget,
+		NoTopUp:        !chainTopUp,
 		OnFallthrough: func(failed string, err error, next string) {
 			fmt.Fprintf(errOut, "%s failed (%v); trying %s\n", failed, err, next)
 		},

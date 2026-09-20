@@ -150,6 +150,10 @@ func newHarness(t *testing.T, store keys.Store) *harness {
 	if err := store.Save(filepath.Join(dir, "keys.json")); err != nil {
 		t.Fatal(err)
 	}
+	// Fakes answer with three results, which would trigger a top-up on
+	// every search; the dedicated test turns it back on.
+	chainTopUp = false
+	t.Cleanup(func() { chainTopUp = true })
 	h := &harness{
 		t:    t,
 		dir:  dir,
@@ -1094,5 +1098,24 @@ func TestSearchChainTimesOutSlowProvider(t *testing.T) {
 	}
 	if time.Since(start) > 500*time.Millisecond {
 		t.Errorf("chain ran %s despite a 50ms budget", time.Since(start))
+	}
+}
+
+func TestSearchChainTopUpLabel(t *testing.T) {
+	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	chainTopUp = true
+	h.provs = map[string]*fakeProvider{
+		"exa":      {results: []provider.SearchResult{paper}},
+		"parallel": {results: []provider.SearchResult{wiki, paper}},
+	}
+	out, errOut, err := h.run("--no-filter", "--urls-only", "-n", "10", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(h.built, ",") != "exa,parallel" || strings.Contains(errOut, "failed") {
+		t.Errorf("built = %v, stderr = %q", h.built, errOut)
+	}
+	if !strings.Contains(out, paper.URL) || !strings.Contains(out, wiki.URL) {
+		t.Errorf("fused output = %q", out)
 	}
 }

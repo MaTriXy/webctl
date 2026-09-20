@@ -38,8 +38,11 @@ type Chain struct {
 // topUpFraction is the share of the requested count below which an answer
 // is short enough to top up from the next provider. Keyless tiers that are
 // throttled tend to answer with a truncated, lower-quality list rather than
-// an error.
-const topUpFraction = 0.5
+// an error. A top-up is optional, so it gets at most topUpTimeout.
+const (
+	topUpFraction = 0.5
+	topUpTimeout  = 4 * time.Second
+)
 
 // Name returns the provider that answered the last search, or the first
 // name before any search.
@@ -117,7 +120,7 @@ func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, quer
 		if err != nil {
 			continue
 		}
-		attemptCtx, cancel := context.WithTimeout(ctx, attempt)
+		attemptCtx, cancel := context.WithTimeout(ctx, min(attempt, topUpTimeout))
 		more, err := p.Search(attemptCtx, query, numResults)
 		cancel()
 		if err != nil || len(more) == 0 {
