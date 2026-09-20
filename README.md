@@ -13,9 +13,9 @@ webctl "San Francisco giants MLB score recent games" \
     --goal "The user asked to know the final score of last night's (September 19th) San Francisco Giants game in Major League Baseball"
 ```
 
-By default, webctl will try 3 web search backends.  Each result set is passed (with the original query context) to Jev for scoring;  the high-scoring subset is then deduped deterministically, then passed through a Jev judge.  This means your Claude (or whatever) doesn't have to read as much junk, which saves you $$ (sorry, Anthropic!).
+By default, webctl will try 3 web search backends.  Each result set is passed (with the original query and goal) to Jev for scoring;  the high-scoring subset is then deduped deterministically, then passed through a Jev judge.  This means your Claude (or whatever) doesn't have to read as much junk, which saves you $$ (sorry, Anthropic!).
 
-Optionally, webctl can also scrape the result pages so your agent doesn't have to fetch them.  It then parses out the textual content, divides it into chunks, and sends batches of those chunks (plus the original query context) to Jev for scoring.  High-scoring results are returned.  For some workloads (think long PDFs, long Reddit/StackOverflow comment threads, entire Wikipedia articles, etc), this can save an *enormous* number of tokens.
+Optionally, webctl can also scrape the result pages so your agent doesn't have to fetch them.  It then parses out the textual content, divides it into chunks, and sends batches of those chunks (plus the original query and goal context) to Jev for scoring.  High-scoring results are returned.  For some workloads (think long PDFs, long Reddit/StackOverflow comment threads, entire Wikipedia articles, etc), this can save an *enormous* number of tokens.
 
 It's MIT-licensed and free to you.  Feel free to submit a PR if I missed something!  And if I miss the PR, hit me up [@dorkitude](https://x.com/dorkitude) and I'll get to it ASAP.
 
