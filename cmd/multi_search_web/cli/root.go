@@ -60,6 +60,7 @@ Get started:
 	root.AddCommand(newSetupCmd())
 	root.AddCommand(newKeysCmd())
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newCooldownCmd())
 	root.AddCommand(newEvalCmd())
 	return root
 }

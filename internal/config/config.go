@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -50,6 +51,10 @@ type Config struct {
 	JevBaseURL string
 	JevModel   string
 
+	// Cooldown is the rate-limit backoff policy; CooldownPath is its state file.
+	Cooldown     provider.CooldownConfig
+	CooldownPath string
+
 	// Keys holds the resolved API keys and the SearXNG URL (env overrides file).
 	Keys *keys.Store
 	// KeySource records where each key came from ("env", "file", or "").
@@ -78,6 +83,11 @@ func New() *viper.Viper {
 	v.SetDefault("searxng_url", "")
 	// keys_file: MULTI_SEARCH_WEB_KEYS_FILE or config.yaml; "" means keys.DefaultPath().
 	v.SetDefault("keys_file", "")
+	// Rate-limit cooldowns; see provider.DefaultCooldown.
+	v.SetDefault("cooldown.enabled", provider.DefaultCooldown.Enabled)
+	v.SetDefault("cooldown.steps", durationStrings(provider.DefaultCooldown.Steps))
+	v.SetDefault("cooldown.probe_interval", provider.DefaultCooldown.ProbeInterval.String())
+	v.SetDefault("cooldown.quota_start", provider.DefaultCooldown.QuotaStart)
 
 	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
@@ -91,6 +101,50 @@ func New() *viper.Viper {
 }
 
 func keyField(n keys.Name) string { return "keys." + string(n) }
+
+func durationStrings(ds []time.Duration) []string {
+	out := make([]string, len(ds))
+	for i, d := range ds {
+		out[i] = d.String()
+	}
+	return out
+}
+
+// cooldownConfig reads cooldown.* from v. Steps accept a YAML list or a
+// comma-separated string (the env form).
+func cooldownConfig(v *viper.Viper) (provider.CooldownConfig, error) {
+	cfg := provider.CooldownConfig{
+		Enabled:    v.GetBool("cooldown.enabled"),
+		QuotaStart: v.GetInt("cooldown.quota_start"),
+	}
+	var raw []string
+	for _, s := range v.GetStringSlice("cooldown.steps") {
+		raw = append(raw, strings.Split(s, ",")...)
+	}
+	for _, s := range raw {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil || d <= 0 {
+			return cfg, fmt.Errorf("cooldown.steps: %q is not a positive duration", s)
+		}
+		cfg.Steps = append(cfg.Steps, d)
+	}
+	if len(cfg.Steps) == 0 {
+		return cfg, errors.New("cooldown.steps must list at least one duration")
+	}
+	pi, err := time.ParseDuration(v.GetString("cooldown.probe_interval"))
+	if err != nil || pi <= 0 {
+		return cfg, fmt.Errorf("cooldown.probe_interval: %q is not a positive duration", v.GetString("cooldown.probe_interval"))
+	}
+	cfg.ProbeInterval = pi
+	if cfg.QuotaStart < 1 {
+		cfg.QuotaStart = 1
+	}
+	return cfg, nil
+}
 
 // Load resolves configuration from all sources.
 func Load(opts Options) (*Config, error) {
@@ -134,16 +188,22 @@ func Load(opts Options) (*Config, error) {
 		return nil, err
 	}
 
+	cooldown, err := cooldownConfig(v)
+	if err != nil {
+		return nil, err
+	}
 	cfg := &Config{
-		Dir:        dir,
-		KeysPath:   keysPath,
-		Provider:   strings.ToLower(strings.TrimSpace(v.GetString("provider"))),
-		Num:        v.GetInt("num"),
-		MinScore:   v.GetFloat64("min_score"),
-		JevBaseURL: strings.TrimRight(v.GetString("jev.base_url"), "/"),
-		JevModel:   v.GetString("jev.model"),
-		Keys:       &keys.Store{},
-		KeySource:  map[keys.Name]string{},
+		Dir:          dir,
+		KeysPath:     keysPath,
+		Cooldown:     cooldown,
+		CooldownPath: filepath.Join(dir, "cooldown.json"),
+		Provider:     strings.ToLower(strings.TrimSpace(v.GetString("provider"))),
+		Num:          v.GetInt("num"),
+		MinScore:     v.GetFloat64("min_score"),
+		JevBaseURL:   strings.TrimRight(v.GetString("jev.base_url"), "/"),
+		JevModel:     v.GetString("jev.model"),
+		Keys:         &keys.Store{},
+		KeySource:    map[keys.Name]string{},
 	}
 
 	// Env (via viper) wins over the file.

@@ -125,6 +125,9 @@ func newKeysCmd() *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Saved %s key to %s\n", name.Display(), cfg.KeysPath)
+			if cleared := provider.NewCooldown(cfg.CooldownPath, cfg.Cooldown).Clear(string(name)); len(cleared) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Cleared cooldown for %s\n", strings.Join(cleared, ", "))
+			}
 			return nil
 		},
 	}

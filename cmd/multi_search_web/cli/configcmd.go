@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
@@ -57,6 +58,37 @@ var settings = []setting{
 	{"jev.model", "Jev model name", nonEmpty},
 	{"searxng_url", "SearXNG instance URL (keys.json's searxng_url wins when set)", func(v string) (any, error) { return strings.TrimRight(strings.TrimSpace(v), "/"), nil }},
 	{"keys_file", "path of the keys file (default ~/secrets/keys.json)", func(v string) (any, error) { return strings.TrimSpace(v), nil }},
+	{"cooldown.enabled", "skip providers after a 429/402 (true/false)", func(v string) (any, error) {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("cooldown.enabled must be true or false, got %q", v)
+		}
+		return b, nil
+	}},
+	{"cooldown.steps", "comma-separated windows per consecutive failure, e.g. 15m,1h,4h,12h,24h,72h", func(v string) (any, error) {
+		var out []string
+		for _, s := range strings.Split(v, ",") {
+			s = strings.TrimSpace(s)
+			if d, err := time.ParseDuration(s); err != nil || d <= 0 {
+				return nil, fmt.Errorf("cooldown.steps: %q is not a positive duration", s)
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	}},
+	{"cooldown.probe_interval", "at the top of the ladder, allow one probe request this often (e.g. 24h)", func(v string) (any, error) {
+		if d, err := time.ParseDuration(strings.TrimSpace(v)); err != nil || d <= 0 {
+			return nil, fmt.Errorf("cooldown.probe_interval: %q is not a positive duration", v)
+		}
+		return strings.TrimSpace(v), nil
+	}},
+	{"cooldown.quota_start", "strike a 402 (quota spent) starts at", func(v string) (any, error) {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return nil, fmt.Errorf("cooldown.quota_start must be a positive integer, got %q", v)
+		}
+		return n, nil
+	}},
 }
 
 func nonEmpty(v string) (any, error) {
@@ -190,6 +222,14 @@ func effective(cfg *config.Config, file map[string]any, key string) (any, string
 		return cfg.JevModel, "default"
 	case "keys_file":
 		return cfg.KeysPath, "default"
+	case "cooldown.enabled":
+		return cfg.Cooldown.Enabled, "default"
+	case "cooldown.steps":
+		return stepsString(cfg.Cooldown.Steps), "default"
+	case "cooldown.probe_interval":
+		return provider.FormatDuration(cfg.Cooldown.ProbeInterval), "default"
+	case "cooldown.quota_start":
+		return cfg.Cooldown.QuotaStart, "default"
 	case "searxng_url":
 		if cfg.KeySource[keys.SearXNG] != "" {
 			return cfg.Keys.Get(keys.SearXNG), cfg.KeySource[keys.SearXNG]

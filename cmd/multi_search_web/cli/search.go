@@ -17,6 +17,7 @@ import (
 
 	"github.com/dorkitude/multi_search_web/internal/config"
 	"github.com/dorkitude/multi_search_web/internal/jev"
+	"github.com/dorkitude/multi_search_web/internal/keys"
 	"github.com/dorkitude/multi_search_web/internal/provider"
 	"github.com/dorkitude/multi_search_web/internal/scrape"
 )
@@ -538,17 +539,38 @@ var (
 	chainTopUp     = true
 )
 
+// newCooldown opens the persistent cooldown store for cfg. Tests override it.
+var newCooldown = func(cfg *config.Config) provider.Cooldowns {
+	return provider.NewCooldown(cfg.CooldownPath, cfg.Cooldown)
+}
+
+// cooldownKey tracks keyed and keyless use of a provider separately.
+func cooldownKey(cfg *config.Config, name string) string {
+	if n, err := keys.Parse(provider.Normalize(name)); err == nil && cfg.Keys.Get(n) != "" {
+		return name + "+key"
+	}
+	return name
+}
+
 // newChain wraps chain in a lazily-constructed provider.Chain that reports
-// fall-throughs to errOut.
-func newChain(cfg *config.Config, chain []string, errOut io.Writer) *provider.Chain {
+// fall-throughs and cooldown skips to errOut. Skips are mentioned once an
+// hour per provider unless verbose.
+func newChain(cfg *config.Config, chain []string, errOut io.Writer, verbose bool) *provider.Chain {
 	return &provider.Chain{
 		Names:          chain,
 		New:            func(name string) (provider.Provider, error) { return newProvider(cfg, name) },
 		AttemptTimeout: attemptTimeout,
 		Budget:         chainBudget,
 		NoTopUp:        !chainTopUp,
+		Cooldowns:      newCooldown(cfg),
+		CooldownKey:    func(name string) string { return cooldownKey(cfg, name) },
 		OnFallthrough: func(failed string, err error, next string) {
 			fmt.Fprintf(errOut, "%s failed (%v); trying %s\n", failed, err, next)
+		},
+		OnSkip: func(name, reason string, announce bool) {
+			if announce || verbose {
+				fmt.Fprintln(errOut, reason)
+			}
 		},
 	}
 }
@@ -556,7 +578,7 @@ func newChain(cfg *config.Config, chain []string, errOut io.Writer) *provider.Ch
 // searchChain tries each provider in order and returns the first successful
 // search, reporting fall-throughs to errOut.
 func searchChain(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (string, []provider.SearchResult, error) {
-	c := newChain(cfg, chain, errOut)
+	c := newChain(cfg, chain, errOut, sf.verbose)
 	results, err := c.Search(ctx, query, num)
 	if err != nil {
 		return "", nil, err

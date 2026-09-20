@@ -154,6 +154,9 @@ func newHarness(t *testing.T, store keys.Store) *harness {
 	// every search; the dedicated test turns it back on.
 	chainTopUp = false
 	t.Cleanup(func() { chainTopUp = true })
+	origCooldown := newCooldown
+	newCooldown = func(cfg *config.Config) provider.Cooldowns { return provider.NewCooldown("", cfg.Cooldown) }
+	t.Cleanup(func() { newCooldown = origCooldown })
 	h := &harness{
 		t:    t,
 		dir:  dir,

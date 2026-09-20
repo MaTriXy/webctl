@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +133,38 @@ func TestChainTopsUpShortAnswers(t *testing.T) {
 	c = chainOf(&chainStub{name: "a", results: a}, &chainStub{name: "b", err: errors.New("down")})
 	if got, _ := c.Search(context.Background(), "q", 10); len(got) != 3 || c.Name() != "a" {
 		t.Errorf("failed top-up should keep the first answer: %d, %q", len(got), c.Name())
+	}
+}
+
+func TestChainHonorsCooldowns(t *testing.T) {
+	hit := SearchResult{Title: "t", URL: "https://x"}
+	cd := NewCooldown("", CooldownConfig{Enabled: true, Steps: []time.Duration{time.Hour}, ProbeInterval: time.Hour, QuotaStart: 1})
+	var skips []string
+	c := chainOf(&chainStub{name: "a", err: &APIError{Provider: "Exa", Status: 429}}, &chainStub{name: "b", results: []SearchResult{hit}})
+	c.Cooldowns = cd
+	c.OnSkip = func(name, reason string, announce bool) { skips = append(skips, fmt.Sprintf("%s:%v", name, announce)) }
+	if _, err := c.Search(context.Background(), "q", 5); err != nil || c.Name() != "b" {
+		t.Fatalf("first search: %v %q", err, c.Name())
+	}
+	if !cd.Active("a") {
+		t.Fatal("429 should start a cooldown")
+	}
+	// Second search skips a without calling it and announces once.
+	c = chainOf(&chainStub{name: "a", err: errors.New("must not be called")}, &chainStub{name: "b", results: []SearchResult{hit}})
+	c.Cooldowns = cd
+	c.OnSkip = func(name, reason string, announce bool) { skips = append(skips, fmt.Sprintf("%s:%v", name, announce)) }
+	for i := 0; i < 2; i++ {
+		if _, err := c.Search(context.Background(), "q", 5); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Join(skips, ",") != "a:true,a:false" {
+		t.Errorf("skips = %v", skips)
+	}
+	// Everything cooling down is a clear error.
+	cd.Note("b", &APIError{Provider: "Parallel", Status: 402})
+	_, err := c.Search(context.Background(), "q", 5)
+	if err == nil || !strings.Contains(err.Error(), "skipped") {
+		t.Errorf("err = %v", err)
 	}
 }

@@ -81,6 +81,33 @@ multi_search_web --random "transformer circuits" # one random backend, fall back
 
 Duplicate hits (same URL, or the same title from several hosts such as an arXiv abstract, its PDF, and a proceedings mirror) are collapsed before filtering.
 
+### Cooldowns for rate-limiting
+
+The keyless tiers meter by the day. When a provider answers 429 (rate limited) or 402 (quota spent), it is skipped for a window that grows with each consecutive failure:
+
+```
+15m → 1h → 4h → 12h → 24h → 72h
+```
+
+A 402 starts at the third step (4h) because a spent quota does not come back in fifteen minutes. At the top of the ladder the provider stays parked, and one probe request is allowed every 24h; a failed probe re-arms the 72h, a success resets everything. State lives in `~/multi_search_web/cooldown.json`, so every process on the machine honors it, and keyed and keyless use of a provider are tracked separately: adding a key clears that provider's cooldown.
+
+A skipped provider is mentioned once an hour on stderr (every time with `--verbose`):
+
+```
+exa skipped: cooling down until Mon 14:20 (rate limited 12m ago, strike 2 of 6); retry now with `multi_search_web cooldown clear exa`, adjust with `multi_search_web config set cooldown.steps ...`
+```
+
+```bash
+multi_search_web cooldown                            # who is parked, strike, window
+multi_search_web cooldown clear [exa]                # forget it; next search retries
+multi_search_web config set cooldown.steps 30m,2h,8h,24h,72h
+multi_search_web config set cooldown.probe_interval 12h
+multi_search_web config set cooldown.quota_start 4
+multi_search_web config set cooldown.enabled false   # always try every provider
+```
+
+If every provider is cooling down and no SearXNG is configured, the search fails with exit 1 and names the earliest retry time.
+
 ### Your own SearXNG (no quotas)
 
 The keyless tiers throttle after a few dozen searches. A local SearXNG has no quota and aggregates Google, Bing, and others:

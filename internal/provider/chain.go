@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -31,6 +30,14 @@ type Chain struct {
 	OnFallthrough func(failed string, err error, next string)
 	// NoTopUp disables topping up a short answer from the next provider.
 	NoTopUp bool
+	// Cooldowns, when set, skips providers that recently rate limited.
+	// CooldownKey maps a provider name to its cooldown entry (keyed and
+	// keyless use of the same provider are tracked apart); nil uses the name.
+	Cooldowns   Cooldowns
+	CooldownKey func(name string) string
+	// OnSkip, if set, is told when a cooling-down provider is skipped and
+	// whether the user should hear about it this time.
+	OnSkip func(name, reason string, announce bool)
 
 	// answered is the provider (or fused pair) that served the last search.
 	answered string
@@ -45,34 +52,11 @@ const (
 	topUpTimeout  = 4 * time.Second
 )
 
-// rateLimitCooldown is how long a provider that answered 429 is skipped by
-// every Chain in this process. Free tiers meter by the minute; asking again
-// sooner only spends a request and a fall-through.
-const rateLimitCooldown = 90 * time.Second
-
-var (
-	cooldownMu    sync.Mutex
-	cooldownUntil = map[string]time.Time{}
-	now           = time.Now
-)
-
-// coolingDown reports whether name answered 429 recently.
-func coolingDown(name string) bool {
-	cooldownMu.Lock()
-	defer cooldownMu.Unlock()
-	return now().Before(cooldownUntil[name])
-}
-
-// noteRateLimit starts the cooldown for name if err is a 429 or a 402
-// (You.com's free profile answers 402 once its quota is spent).
-func noteRateLimit(name string, err error) {
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) || (apiErr.Status != 429 && apiErr.Status != 402) {
-		return
-	}
-	cooldownMu.Lock()
-	cooldownUntil[name] = now().Add(rateLimitCooldown)
-	cooldownMu.Unlock()
+// Cooldowns is what a Chain consults before and after each provider call.
+// *Cooldown implements it; nil means never skip.
+type Cooldowns interface {
+	Skip(name string) (skip bool, reason string, announce bool)
+	Note(name string, err error)
 }
 
 // errCoolingDown marks a provider skipped because of a recent 429.
@@ -112,7 +96,7 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 		last := i+1 == len(c.Names)
 		var p Provider
 		err := errCoolingDown
-		if !coolingDown(name) {
+		if !c.coolingDown(name) {
 			p, err = c.New(name)
 		}
 		if err == nil {
@@ -120,7 +104,7 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 			attemptCtx, cancel := context.WithTimeout(chainCtx, attempt)
 			results, err = p.Search(attemptCtx, query, numResults)
 			cancel()
-			noteRateLimit(name, err)
+			c.note(name, err)
 			if err == nil && (len(results) > 0 || last) {
 				c.answered = p.Name()
 				if !last && !c.NoTopUp && len(results) < int(float64(numResults)*topUpFraction) {
@@ -140,7 +124,7 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 			errs = append(errs, fmt.Errorf("chain budget of %s exhausted", budget))
 			break
 		}
-		if !last && c.OnFallthrough != nil {
+		if !last && c.OnFallthrough != nil && !errors.Is(err, errCoolingDown) {
 			c.OnFallthrough(name, err, c.Names[i+1])
 		}
 	}
@@ -155,7 +139,7 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 // as it was. The fused engine names become the chain's Name.
 func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, query string, numResults int, first Ranked) []SearchResult {
 	for _, name := range c.Names[from:] {
-		if coolingDown(name) {
+		if c.coolingDown(name) {
 			continue
 		}
 		p, err := c.New(name)
@@ -165,7 +149,7 @@ func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, quer
 		attemptCtx, cancel := context.WithTimeout(ctx, min(attempt, topUpTimeout))
 		more, err := p.Search(attemptCtx, query, numResults)
 		cancel()
-		noteRateLimit(name, err)
+		c.note(name, err)
 		if err != nil || len(more) == 0 {
 			continue
 		}
@@ -178,6 +162,31 @@ func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, quer
 		return out
 	}
 	return first.Results
+}
+
+func (c *Chain) cooldownKey(name string) string {
+	if c.CooldownKey != nil {
+		return c.CooldownKey(name)
+	}
+	return name
+}
+
+// coolingDown consults Cooldowns and reports a skip to OnSkip.
+func (c *Chain) coolingDown(name string) bool {
+	if c.Cooldowns == nil {
+		return false
+	}
+	skip, reason, announce := c.Cooldowns.Skip(c.cooldownKey(name))
+	if skip && c.OnSkip != nil {
+		c.OnSkip(name, reason, announce)
+	}
+	return skip
+}
+
+func (c *Chain) note(name string, err error) {
+	if c.Cooldowns != nil {
+		c.Cooldowns.Note(c.cooldownKey(name), err)
+	}
 }
 
 // Validate validates the first provider.

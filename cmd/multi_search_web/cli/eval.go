@@ -116,7 +116,7 @@ Cases are YAML files embedded from evals/cases/, or a directory given with
 				Scraper:           &scrape.Fetcher{},
 				NewProvider: func(name string) (provider.Provider, error) {
 					if name == "" {
-						return newChain(cfg, chain, cmd.ErrOrStderr()), nil
+						return newChain(cfg, chain, cmd.ErrOrStderr(), verbose), nil
 					}
 					return newProvider(cfg, name)
 				},

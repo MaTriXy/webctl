@@ -27,7 +27,7 @@ func TestConfigSetGetShowUnset(t *testing.T) {
 	for _, n := range keys.All {
 		t.Setenv(n.EnvVar(), "")
 	}
-	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "JEV_BASE_URL", "JEV_MODEL", "KEYS_FILE", "SEARXNG_URL"} {
+	for _, k := range []string{"PROVIDER", "NUM", "MIN_SCORE", "JEV_BASE_URL", "JEV_MODEL", "KEYS_FILE", "SEARXNG_URL", "COOLDOWN_ENABLED", "COOLDOWN_STEPS"} {
 		t.Setenv(config.EnvPrefix+"_"+k, "")
 	}
 	dir := t.TempDir()
@@ -71,5 +71,15 @@ func TestConfigSetGetShowUnset(t *testing.T) {
 	}
 	if _, err := runConfig(t, dir, "config", "get", "bogus"); err == nil || !strings.Contains(err.Error(), "unknown setting") {
 		t.Errorf("bogus setting: %v", err)
+	}
+	if _, err := runConfig(t, dir, "config", "set", "cooldown.steps", "5m,1h,bogus"); err == nil {
+		t.Error("bad step should fail")
+	}
+	if _, err := runConfig(t, dir, "config", "set", "cooldown.steps", "5m,1h"); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runConfig(t, dir, "config", "get", "cooldown.steps")
+	if err != nil || !strings.Contains(out, "5m") {
+		t.Errorf("cooldown.steps get = %q, %v", out, err)
 	}
 }
