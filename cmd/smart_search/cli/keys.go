@@ -16,6 +16,7 @@ import (
 
 	"github.com/dorkitude/smart_search/internal/config"
 	"github.com/dorkitude/smart_search/internal/keys"
+	"github.com/dorkitude/smart_search/internal/provider"
 )
 
 const validateTimeout = 20 * time.Second
@@ -28,53 +29,44 @@ func validateKey(ctx context.Context, cfg *config.Config, name keys.Name, key st
 	ctx, cancel := context.WithTimeout(ctx, validateTimeout)
 	defer cancel()
 
-	var (
-		url     string
-		headers = map[string]string{"Content-Type": "application/json"}
-		body    any
-	)
-	switch name {
-	case keys.Exa:
-		url = "https://api.exa.ai/search"
-		headers["x-api-key"] = key
-		body = map[string]any{"query": "hello world", "numResults": 1}
-	case keys.Parallel:
-		url = "https://api.parallel.ai/v1/search"
-		headers["Authorization"] = "Bearer " + key
-		body = map[string]any{"query": "hello world", "max_results": 1}
-	case keys.Sonar:
-		url = "https://api.perplexity.ai/chat/completions"
-		headers["Authorization"] = "Bearer " + key
-		body = map[string]any{
-			"model":      "sonar",
-			"messages":   []map[string]string{{"role": "user", "content": "hello"}},
-			"max_tokens": 1,
+	if name != keys.Jev {
+		p, err := provider.New(string(name), key, provider.Options{})
+		if err != nil {
+			return err
 		}
-	case keys.Jev:
-		url = cfg.JevBaseURL + "/v1/systemone"
-		headers["Authorization"] = "Bearer " + key
-		body = map[string]any{
-			"model": cfg.JevModel,
-			"state": map[string]any{"text": "hello world"},
-			"questions": map[string]any{
-				"greeting": map[string]any{"type": "noul", "instructions": "Is the text a greeting?"},
-			},
+		if err := p.Validate(ctx); err != nil {
+			var apiErr *provider.APIError
+			if errors.As(err, &apiErr) && apiErr.Unauthorized() {
+				return fmt.Errorf("%w (HTTP %d: %s)", ErrInvalidKey, apiErr.Status, apiErr.Body)
+			}
+			return err
 		}
-	default:
-		return fmt.Errorf("no validator for %q", name)
+		return nil
 	}
 
+	return validateJevKey(ctx, cfg, key)
+}
+
+// validateJevKey asks Jev a trivial noul question to confirm the key works.
+func validateJevKey(ctx context.Context, cfg *config.Config, key string) error {
+	body := map[string]any{
+		"model": cfg.JevModel,
+		"state": map[string]any{"text": "hello world"},
+		"questions": map[string]any{
+			"greeting": map[string]any{"type": "noul", "instructions": "Is the text a greeting?"},
+		},
+	}
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
+	url := cfg.JevBaseURL + "/v1/systemone"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	for k, val := range headers {
-		req.Header.Set(k, val)
-	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("reach %s: %w", url, err)
@@ -88,7 +80,7 @@ func validateKey(ctx context.Context, cfg *config.Config, name keys.Name, key st
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return fmt.Errorf("%w (HTTP %d)", ErrInvalidKey, resp.StatusCode)
 	default:
-		return fmt.Errorf("%s returned HTTP %d: %s", name.Display(), resp.StatusCode, strings.TrimSpace(string(snippet)))
+		return fmt.Errorf("Jev returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 }
 
