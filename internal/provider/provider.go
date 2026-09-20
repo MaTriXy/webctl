@@ -1,5 +1,5 @@
 // Package provider defines the search Provider interface and implementations
-// for Exa, Parallel, and Sonar (Perplexity).
+// for Exa, Parallel, Sonar (Perplexity), DuckDuckGo, and SearXNG.
 package provider
 
 import (
@@ -20,11 +20,12 @@ type SearchResult struct {
 
 // Provider is a web search backend.
 type Provider interface {
-	// Name returns the short provider identifier (exa, parallel, sonar).
+	// Name returns the short provider identifier (exa, parallel, sonar, ddg, searxng).
 	Name() string
 	// Search runs query and returns up to numResults results.
 	Search(ctx context.Context, query string, numResults int) ([]SearchResult, error)
-	// Validate performs a lightweight call to confirm the API key works.
+	// Validate performs a lightweight call to confirm the backend is reachable
+	// and, for keyed providers, that the API key works.
 	Validate(ctx context.Context) error
 }
 
@@ -43,21 +44,51 @@ const DefaultTimeout = 30 * time.Second
 // SonarTimeout is longer because Sonar runs an LLM before answering.
 const SonarTimeout = 90 * time.Second
 
-// Names returns the supported provider names in display order.
-func Names() []string { return []string{"exa", "parallel", "sonar"} }
+// Names returns the supported provider names in auto-chain order: keyed
+// providers first, then the keyless fallbacks.
+func Names() []string { return []string{"exa", "parallel", "sonar", "ddg", "searxng"} }
 
-// New constructs the named provider.
-func New(name, apiKey string, opts Options) (Provider, error) {
-	if apiKey == "" {
+// Keyed lists the providers that require an API key.
+func Keyed() []string { return []string{"exa", "parallel", "sonar"} }
+
+// Normalize lowercases and trims a provider name, resolving aliases.
+func Normalize(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "perplexity":
+		return "sonar"
+	case "duckduckgo":
+		return "ddg"
+	}
+	return name
+}
+
+// Keyless reports whether the named provider works without an API key.
+func Keyless(name string) bool {
+	switch Normalize(name) {
+	case "ddg", "searxng":
+		return true
+	}
+	return false
+}
+
+// New constructs the named provider. cred is the API key for keyed providers
+// and the instance URL for searxng; ddg ignores it.
+func New(name, cred string, opts Options) (Provider, error) {
+	switch Normalize(name) {
+	case "ddg":
+		return NewDDG(opts), nil
+	}
+	if cred == "" {
 		return nil, fmt.Errorf("%s: API key is empty", name)
 	}
-	switch strings.ToLower(strings.TrimSpace(name)) {
+	switch Normalize(name) {
 	case "exa":
-		return NewExa(apiKey, opts), nil
+		return NewExa(cred, opts), nil
 	case "parallel":
-		return NewParallel(apiKey, opts), nil
-	case "sonar", "perplexity":
-		return NewSonar(apiKey, opts), nil
+		return NewParallel(cred, opts), nil
+	case "sonar":
+		return NewSonar(cred, opts), nil
 	}
 	names := Names()
 	sort.Strings(names)
