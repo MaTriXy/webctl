@@ -40,7 +40,7 @@ var specs = map[Name]spec{
 	Parallel:  {"PARALLEL_API_KEY", "Parallel", "https://platform.parallel.ai", false},
 	Sonar:     {"SONAR_API_KEY", "Sonar (Perplexity)", "https://perplexity.ai", false},
 	Youcom:    {"YOUCOM_API_KEY", "You.com", "https://you.com/platform/api-keys", false},
-	Brave:     {"BRAVE_API_KEY", "Brave Search", "https://brave.com/search/api/", false},
+	Brave:     {"BRAVE_API_KEY", "Brave Search (recommended: 5,000 free searches/month)", "https://brave.com/search/api/", false},
 	Tavily:    {"TAVILY_API_KEY", "Tavily", "https://app.tavily.com", false},
 	Firecrawl: {"FIRECRAWL_API_KEY", "Firecrawl", "https://www.firecrawl.dev", false},
 	Keenable:  {"KEENABLE_API_KEY", "Keenable", "https://keenable.ai", false},
@@ -54,7 +54,7 @@ var specs = map[Name]spec{
 // SearchProviders lists the slots that correspond to search providers, in
 // the order setup offers them. SearXNG and Degoog hold instance URLs rather
 // than secrets; DuckDuckGo and ketch need nothing and have no slot.
-var SearchProviders = []Name{Exa, Parallel, Sonar, Youcom, Brave, Tavily, Firecrawl, Keenable, SerpBase, Serply, SearXNG, Degoog}
+var SearchProviders = []Name{Brave, Exa, Parallel, Sonar, Youcom, Tavily, Firecrawl, Keenable, SerpBase, Serply, SearXNG, Degoog}
 
 // All lists every key name, search providers first.
 var All = append(append([]Name{}, SearchProviders...), Jev)

@@ -36,9 +36,9 @@ webctl setup        # asks for your Jev key
 webctl search "mechanistic interpretability 2026" --goal "Recent papers on sparse autoencoders and circuit analysis"
 ```
 
-Searching does not require keys for hobbyist-level usage on several platforms, which webctl intelligently picks from.
+Searching does not require keys for hobbyist-level usage: with none configured, webctl runs through [ketch](https://github.com/1broseidon/ketch) (its own chain of free tiers) and DuckDuckGo, and backs off from rate limits with a cooldown ladder.
 
-It uses the keyless Exa, Parallel, and You.com endpoints, with DuckDuckGo as a fallback.  webctl also respects rate limits with exponential cooldowns.  If you're hitting a lot of rate limits, consider paying for a search service and configuring it. ([docs/config.md](docs/config.md)).
+The author prefers [Brave Search](https://brave.com/search/api/): 5,000 free searches a month, requires an API key. It is the first choice in `webctl setup`; once any search key is configured, only your keyed providers are used. ([docs/providers.md](docs/providers.md))
 
 ## Installation
 
@@ -178,7 +178,7 @@ webctl search "q" -n 20            # results to request per provider
 
 ### Providers
 
-Three providers per search, rankings fused by reciprocal rank. Keyed providers first, then keyless endpoints, then DuckDuckGo, then SearXNG. [docs/providers.md](docs/providers.md)
+Up to three providers per search, rankings fused by reciprocal rank: your SearXNG or Degoog if set, then the providers you set a key for (Brave first); ketch and DuckDuckGo only when no key exists. [docs/providers.md](docs/providers.md)
 
 ```bash
 webctl search "q" -p exa           # exactly one provider

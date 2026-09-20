@@ -60,7 +60,7 @@ func Names() []string {
 // Exa, Parallel, You.com, Firecrawl, and Keenable also run keyless when
 // named explicitly.
 func Keyed() []string {
-	return []string{"exa", "parallel", "sonar", "youcom", "brave", "tavily", "firecrawl", "keenable", "serpbase", "serply"}
+	return []string{"brave", "exa", "parallel", "sonar", "youcom", "tavily", "firecrawl", "keenable", "serpbase", "serply"}
 }
 
 // Normalize lowercases and trims a provider name, resolving aliases.

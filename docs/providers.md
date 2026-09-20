@@ -8,7 +8,7 @@ Providers are taken in this order, skipping any that are cooling down (see `cool
 
 1. A `provider` set in config, if any.
 2. Your own metasearch: `searxng`, then `degoog`, when their URLs are set.
-3. Providers you set a key for, in the order exa, parallel, sonar, youcom, brave, tavily, firecrawl, keenable, serpbase, serply.
+3. Providers you set a key for, in the order brave, exa, parallel, sonar, youcom, tavily, firecrawl, keenable, serpbase, serply. Brave is the author's pick: 5,000 free searches a month with a key, about 130 ms per query.
 4. Only when no key is set at all: `ketch` (a separate CLI that runs its own chain of free tiers), then `ddg`.
 
 Setting a key is a choice of engine: as soon as one exists, the free tiers leave the chain. With one key and `sources: 3`, one provider answers.
@@ -29,7 +29,7 @@ Keyless Exa, Parallel, You.com, Firecrawl, and Keenable are not in the default c
 | `parallel` | yes, unpublished daily limit | `parallel` | `PARALLEL_API_KEY` | ~0.7s, 2.8K-char excerpts, 10 results; keyed $1 per 1,000 (fast), 600/min |
 | `youcom` | yes, ~70/day observed | `youcom` | `YOUCOM_API_KEY` | keyword results; keyed $5 per 1,000, $100 signup credit, 10/s |
 | `sonar` | no | `sonar` | `SONAR_API_KEY` | Perplexity; runs an LLM, 90s timeout |
-| `brave` | no | `brave` | `BRAVE_API_KEY` | up to 20 results; $5 credit a month (about 1,000 queries) then $5 per 1,000, 50/s |
+| `brave` | no | `brave` | `BRAVE_API_KEY` | recommended; up to 20 results per query, 50/s; free tier of 5,000 searches a month, then $5 per 1,000 |
 | `tavily` | no | `tavily` | `TAVILY_API_KEY` | agent-oriented, results carry extracted text; 1,000 credits a month free, a basic search is 1 credit, 1/s |
 | `firecrawl` | hosted, IP-gated (often 429/403) | `firecrawl` | `FIRECRAWL_API_KEY` | v2 search; a key lifts the gate; a self-hosted URL is not supported here |
 | `keenable` | yes, hourly cap | `keenable` | `KEENABLE_API_KEY` | index built for agents; ~1.8K-char page text per result; no result count parameter |
