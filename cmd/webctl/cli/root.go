@@ -39,8 +39,11 @@ through ketch (github.com/1broseidon/ketch) and DuckDuckGo, or your own
 SearXNG. Paid providers join only when you set a key. Throttled providers
 back off (see "cooldown").
 
-Recommended form: webctl search "<query>" --goal "<what you actually need>".
-The query goes to the engines; the goal goes to the judges alongside it.
+ALWAYS pass --goal. It is the single biggest lever on result quality:
+the query goes to the engines, the goal goes to every Jev judge next to
+it, and without a goal the judges can only guess what you are after.
+
+  webctl search "<query>" --goal "<what you actually need>"
 
 Help text is short by design. The full reference is compiled in:
   webctl docs            topics
@@ -64,13 +67,16 @@ Help text is short by design. The full reference is compiled in:
 	search := &cobra.Command{
 		Use:   "search [flags] <query>",
 		Short: "Search the web and keep only results Jev judges worth reading",
-		Long: `The query goes to the search engines; --goal tells the judges what you are
-actually after. Both reach every Jev judgment as "Query:" and "Goal:" lines.
+		Long: `Always pass --goal; it is highly recommended on every search. The query goes
+to the search engines; the goal tells the judges what you are actually after.
+Both reach every Jev judgment as "Query:" and "Goal:" lines, and without a
+goal the judges score against the query alone, which keeps more noise.
 
   webctl search "final score san francisco giants september 19th baseball" \
     --goal "The score of the Giants game on the night of September 19th."
 
-A bare "webctl <query>" does the same without a goal.`,
+A bare "webctl <query>" runs the same pipeline without a goal; use it only
+when the query already says everything the judges need.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
