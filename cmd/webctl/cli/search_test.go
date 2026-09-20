@@ -695,18 +695,24 @@ func TestSearchChainAllFail(t *testing.T) {
 }
 
 func TestSearchZeroConfigUsesDDG(t *testing.T) {
-	// Nothing configured: ketch first, then ddg.
+	// Nothing configured: the keyless endpoints in order, then ddg.
 	h := newHarness(t, keys.Store{})
-	_, _, err := h.run("--no-filter", "--urls-only", "q")
+	_, _, err := h.run("--no-filter", "--urls-only", "--sources", "1", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.prov.name != "ketch" || strings.Join(h.built, ",") != "ketch" {
-		t.Errorf("provider = %q, built = %v; want ketch", h.prov.name, h.built)
+	if h.prov.name != "parallel" || strings.Join(h.built, ",") != "parallel" {
+		t.Errorf("provider = %q, built = %v; want parallel", h.prov.name, h.built)
 	}
 	h = newHarness(t, keys.Store{})
-	h.provs = map[string]*fakeProvider{"ketch": {err: errors.New("not installed")}}
-	if _, _, err := h.run("--no-filter", "--urls-only", "q"); err != nil || strings.Join(h.built, ",") != "ketch,ddg" {
+	h.provs = map[string]*fakeProvider{
+		"parallel":  {err: errors.New("throttled")},
+		"exa":       {err: errors.New("throttled")},
+		"keenable":  {err: errors.New("throttled")},
+		"youcom":    {err: errors.New("throttled")},
+		"firecrawl": {err: errors.New("throttled")},
+	}
+	if _, _, err := h.run("--no-filter", "--urls-only", "--sources", "1", "q"); err != nil || strings.Join(h.built, ",") != "parallel,exa,keenable,youcom,firecrawl,ddg" {
 		t.Errorf("zero-config fallback: %v, built = %v", err, h.built)
 	}
 
@@ -734,10 +740,10 @@ func TestSearchConfiguredProviderWithoutKeyErrors(t *testing.T) {
 }
 
 func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
-	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{JevAPIKey: "j", BraveAPIKey: "b", ExaAPIKey: "e"})
 	h.provs = map[string]*fakeProvider{
-		"ketch": {results: []provider.SearchResult{blog, paper}},
-		"ddg":   {results: []provider.SearchResult{paper, wiki}},
+		"brave": {results: []provider.SearchResult{blog, paper}},
+		"exa":   {results: []provider.SearchResult{paper, wiki}},
 	}
 	out, _, err := h.run("--multi", "--no-filter", "--json", "q")
 	if err != nil {
@@ -746,7 +752,7 @@ func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
 	got := mustJSON[[]rawResult](t, out)
 	// paper appears in both lists (ranks 2 and 1) → top; blog (rank 1) beats wiki (rank 2).
 	wantURLs := []string{paper.URL, blog.URL, wiki.URL}
-	wantEngines := []string{"ketch,ddg", "ketch", "ddg"}
+	wantEngines := []string{"brave,exa", "brave", "exa"}
 	if len(got) != 3 {
 		t.Fatalf("got %+v", got)
 	}
@@ -757,49 +763,49 @@ func TestSearchMultiFusesAndTagsEngines(t *testing.T) {
 	}
 
 	// Filtered mode: the summary names every engine and engines survive Jev.
-	h = newHarness(t, keys.Store{JevAPIKey: "j"})
+	h = newHarness(t, keys.Store{JevAPIKey: "j", BraveAPIKey: "b", ExaAPIKey: "e"})
 	h.provs = map[string]*fakeProvider{
-		"ketch": {results: []provider.SearchResult{blog, paper}},
-		"ddg":   {results: []provider.SearchResult{paper, wiki}},
+		"brave": {results: []provider.SearchResult{blog, paper}},
+		"exa":   {results: []provider.SearchResult{paper, wiki}},
 	}
 	out, errOut, err := h.run("--multi", "--json", "--verbose", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(errOut, "ketch+ddg: 3 results → 2 kept") {
+	if !strings.Contains(errOut, "brave+exa: 3 results → 2 kept") {
 		t.Errorf("summary = %q", errOut)
 	}
 	items := mustJSON[[]outputResult](t, out)
-	if len(items) != 3 || items[0].URL != paper.URL || strings.Join(items[0].Engines, ",") != "ketch,ddg" {
+	if len(items) != 3 || items[0].URL != paper.URL || strings.Join(items[0].Engines, ",") != "brave,exa" {
 		t.Errorf("items = %+v", items)
 	}
 	out, _, err = h.run("--multi", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Engines: ketch, ddg") {
+	if !strings.Contains(out, "Engines: brave, exa") {
 		t.Errorf("pretty output should list engines:\n%s", out)
 	}
 }
 
 func TestSearchMultiPartialFailureAndCap(t *testing.T) {
-	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{JevAPIKey: "j", BraveAPIKey: "b", ExaAPIKey: "e"})
 	h.provs = map[string]*fakeProvider{
-		"ketch": {err: errors.New("quota")},
-		"ddg":   {results: []provider.SearchResult{paper, wiki, blog}},
+		"brave": {err: errors.New("quota")},
+		"exa":   {results: []provider.SearchResult{paper, wiki, blog}},
 	}
 	out, errOut, err := h.run("--multi", "--no-filter", "--urls-only", "-n", "2", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(errOut, "ketch failed: quota") {
+	if !strings.Contains(errOut, "brave failed: quota") {
 		t.Errorf("stderr = %q", errOut)
 	}
 	if out != paper.URL+"\n"+wiki.URL+"\n" {
 		t.Errorf("urls = %q", out)
 	}
 
-	h.provs["ddg"].err = errors.New("blocked")
+	h.provs["exa"].err = errors.New("blocked")
 	_, _, err = h.run("--multi", "--no-filter", "q")
 	if err == nil || !strings.Contains(err.Error(), "all 2 providers failed") || !strings.Contains(err.Error(), "blocked") {
 		t.Errorf("err = %v", err)
@@ -817,19 +823,19 @@ func TestSearchRandomFallsBack(t *testing.T) {
 	}
 	t.Cleanup(func() { shuffleChain = orig })
 
-	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{JevAPIKey: "j", BraveAPIKey: "b", ExaAPIKey: "e"})
 	h.provs = map[string]*fakeProvider{
-		"ddg":   {err: errors.New("blocked")},
-		"ketch": {results: []provider.SearchResult{paper}},
+		"exa":   {err: errors.New("blocked")},
+		"brave": {results: []provider.SearchResult{paper}},
 	}
 	_, errOut, err := h.run("--random", "--urls-only", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(h.built, ",") != "ddg,ketch" {
-		t.Errorf("random order = %v, want reversed chain ddg,ketch", h.built)
+	if strings.Join(h.built, ",") != "exa,brave" {
+		t.Errorf("random order = %v, want reversed chain exa,brave", h.built)
 	}
-	if !strings.Contains(errOut, "ddg failed (blocked); trying ketch") {
+	if !strings.Contains(errOut, "exa failed (blocked); trying brave") {
 		t.Errorf("stderr = %q", errOut)
 	}
 }
@@ -1082,17 +1088,17 @@ func TestSearchChainTimesOutSlowProvider(t *testing.T) {
 	attemptTimeout, chainBudget = 30*time.Millisecond, 500*time.Millisecond
 	t.Cleanup(func() { attemptTimeout, chainBudget = origAttempt, origBudget })
 
-	h := newHarness(t, keys.Store{})
+	h := newHarness(t, keys.Store{BraveAPIKey: "b", ExaAPIKey: "e"})
 	h.provs = map[string]*fakeProvider{
-		"ketch": {hang: true},
-		"ddg":   {results: []provider.SearchResult{paper}},
+		"brave": {hang: true},
+		"exa":   {results: []provider.SearchResult{paper}},
 	}
 	start := time.Now()
 	_, errOut, err := h.run("--no-filter", "--urls-only", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(h.built, ",") != "ketch,ddg" || !strings.Contains(errOut, "ketch failed") {
+	if strings.Join(h.built, ",") != "brave,exa" || !strings.Contains(errOut, "brave failed") {
 		t.Errorf("built = %v, stderr = %q", h.built, errOut)
 	}
 	if time.Since(start) > 300*time.Millisecond {
@@ -1101,8 +1107,8 @@ func TestSearchChainTimesOutSlowProvider(t *testing.T) {
 
 	// Every provider hanging exhausts the chain budget rather than the sum of attempts.
 	attemptTimeout, chainBudget = time.Second, 50*time.Millisecond
-	h = newHarness(t, keys.Store{})
-	h.provs = map[string]*fakeProvider{"ketch": {hang: true}, "ddg": {hang: true}}
+	h = newHarness(t, keys.Store{BraveAPIKey: "b", ExaAPIKey: "e"})
+	h.provs = map[string]*fakeProvider{"brave": {hang: true}, "exa": {hang: true}}
 	start = time.Now()
 	_, _, err = h.run("--no-filter", "--urls-only", "q")
 	if err == nil || !strings.Contains(err.Error(), "chain budget") {
@@ -1114,17 +1120,17 @@ func TestSearchChainTimesOutSlowProvider(t *testing.T) {
 }
 
 func TestSearchChainTopUpLabel(t *testing.T) {
-	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	h := newHarness(t, keys.Store{JevAPIKey: "j", BraveAPIKey: "b", ExaAPIKey: "e"})
 	chainTopUp = true
 	h.provs = map[string]*fakeProvider{
-		"ketch": {results: []provider.SearchResult{paper}},
-		"ddg":   {results: []provider.SearchResult{wiki, paper}},
+		"brave": {results: []provider.SearchResult{paper}},
+		"exa":   {results: []provider.SearchResult{wiki, paper}},
 	}
 	out, errOut, err := h.run("--no-filter", "--urls-only", "-n", "10", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(h.built, ",") != "ketch,ddg" || strings.Contains(errOut, "failed") {
+	if strings.Join(h.built, ",") != "brave,exa" || strings.Contains(errOut, "failed") {
 		t.Errorf("built = %v, stderr = %q", h.built, errOut)
 	}
 	if !strings.Contains(out, paper.URL) || !strings.Contains(out, wiki.URL) {

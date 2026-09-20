@@ -263,7 +263,7 @@ func TestChain(t *testing.T) {
 		{"explicit alias", Config{Keys: &keys.Store{}}, "DuckDuckGo", []string{"ddg"}, false},
 		{"preferred first, then keyed in order, then ddg", Config{Provider: "sonar", Keys: &keys.Store{ParallelAPIKey: "p", ExaAPIKey: "e", SonarAPIKey: "s"}}, "", []string{"sonar", "exa", "parallel"}, false},
 		{"preferred without key is an error", Config{Provider: "sonar", Keys: &keys.Store{ExaAPIKey: "e"}}, "", nil, true},
-		{"no keys: ketch then ddg", Config{Keys: &keys.Store{}}, "", []string{"ketch", "ddg"}, false},
+		{"no keys: keyless endpoints then ddg", Config{Keys: &keys.Store{}}, "", []string{"parallel", "exa", "keenable", "youcom", "firecrawl", "ddg"}, false},
 		{"searxng first when configured", Config{Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa"}, false},
 		{"preferred keyless", Config{Provider: "searxng", Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa"}, false},
 		{"preferred ddg", Config{Provider: "ddg", Keys: &keys.Store{ExaAPIKey: "e"}}, "", []string{"ddg", "exa"}, false},

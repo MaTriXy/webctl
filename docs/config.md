@@ -8,7 +8,7 @@ Settings resolve in this order: command-line flag, `WEBCTL_*` environment variab
 |---|---|---|---|
 | `provider` | `WEBCTL_PROVIDER` | (auto) | provider to put first in the chain |
 | `sources` | `WEBCTL_SOURCES` | 3 | providers queried and fused per search |
-| `num` | `WEBCTL_NUM` | 10 | results requested per provider |
+| `num` | `WEBCTL_NUM` | 20 | results requested per provider; Jev removes the noise |
 | `min_score` | `WEBCTL_MIN_SCORE` | 6 | relevance cut on the 0–10 score |
 | `jev.base_url` | `WEBCTL_JEV_BASE_URL` | `https://api.typesafe.ai` | Jev API root |
 | `jev.model` | `WEBCTL_JEV_MODEL` | `jev-latest` | Jev model |

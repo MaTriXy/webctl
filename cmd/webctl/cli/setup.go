@@ -47,8 +47,9 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 
 	fmt.Println("=== webctl setup ===")
 	fmt.Println()
-	fmt.Println("Required: a Jev key. Search keys are optional: without any, searches run")
-	fmt.Println("through ketch and DuckDuckGo. A search key puts that provider first.")
+	fmt.Println("Required: a Jev key. A search key is strongly advised (Brave is free for")
+	fmt.Println("5,000 searches a month). Without one, searches use the keyless hosted")
+	fmt.Println("endpoints and DuckDuckGo, which throttle by IP.")
 	fmt.Printf("Each key is written to %s as soon as it is accepted.\n", prettyPath(cfg.KeysPath))
 	fmt.Println()
 
@@ -88,7 +89,7 @@ func runSetup(ctx context.Context, cfg *config.Config, validate bool) error {
 	}
 
 	if len(store.ConfiguredProviders()) == 0 && len(cfg.Keys.ConfiguredProviders()) == 0 {
-		fmt.Println("  No search key configured; searches will run through ketch and DuckDuckGo.")
+		fmt.Println("  No search key configured; searches will use the keyless endpoints and DuckDuckGo (throttled by IP).")
 	}
 	fmt.Println()
 

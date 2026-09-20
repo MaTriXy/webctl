@@ -26,7 +26,7 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 | flag | effect |
 |---|---|
 | `-g, --goal TEXT` | what you actually need; shown to every judge next to the query |
-| `-n, --num N` | results to request from each provider (default 10; setting `num`) |
+| `-n, --num N` | results to request from each provider (default 20; setting `num`) |
 | `--sources N` | providers to query and fuse (default 3; setting `sources`); `-p` forces 1 |
 | `-p, --provider NAME` | exactly one provider: exa, parallel, sonar, youcom, ddg, searxng |
 | `--multi` | every available provider |

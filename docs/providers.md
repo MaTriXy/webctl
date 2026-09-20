@@ -9,19 +9,19 @@ Providers are taken in this order, skipping any that are cooling down (see `cool
 1. A `provider` set in config, if any.
 2. Your own metasearch: `searxng`, then `degoog`, when their URLs are set.
 3. Providers you set a key for, in the order brave, exa, parallel, sonar, youcom, tavily, firecrawl, keenable, serpbase, serply. Brave is the author's pick: 5,000 free searches a month with a key, about 130 ms per query.
-4. Only when no key is set at all: `ketch` (a separate CLI that runs its own chain of free tiers), then `ddg`.
+4. Only when no key is set at all: the hosted keyless endpoints `parallel`, `exa`, `keenable`, `youcom`, `firecrawl`, then `ddg`. Each throttles by IP after a few dozen queries a day; cooldowns rotate past the throttled ones.
 
 Setting a key is a choice of engine: as soon as one exists, the free tiers leave the chain. With one key and `sources: 3`, one provider answers.
 
 `sources` (default 3) providers are queried at once; a provider that errors or answers empty is replaced by the next. Lists are fused by reciprocal rank (k=60) and each result carries the engines that returned it. `--sources 1` restores a plain fallback chain. Timeouts: 12s per attempt, 30s per search.
 
-Keyless Exa, Parallel, You.com, Firecrawl, and Keenable are not in the default chain: ketch already rotates through them, and the direct integrations are for keyed use. Any of them can be named with `-p` to run keyless.
+`ketch` is not in any default chain: it is a separate binary (`brew install ketch`) that rotates through the same keyless endpoints, so webctl calls them directly instead. Name it with `-p ketch` if you have it installed.
 
 ## Backends
 
 | name | keyless | key / URL setting | env | notes |
 |---|---|---|---|---|
-| `ketch` | yes | none (ketch's own config) | | shells out to `ketch search --json`; ketch tries Parallel, Exa, Keenable, You.com, Firecrawl, then DuckDuckGo. Install: `brew install ketch`. Matched this tool's keyless chain on the eval suite at about half the latency |
+| `ketch` | yes, if installed | none (ketch's own config) | | not in the default chain; shells out to `ketch search --json`; ketch tries Parallel, Exa, Keenable, You.com, Firecrawl, then DuckDuckGo. Install: `brew install ketch`. Matched this tool's keyless chain on the eval suite at about half the latency |
 | `searxng` | your instance | `searxng` | `SEARXNG_URL` | no quota; results depend on the engines it aggregates; see `searxng` |
 | `degoog` | your instance | `degoog` | `DEGOOG_URL` | self-hosted Google-style metasearch, `GET /api/search`; no result count parameter |
 | `ddg` | yes | none | | DuckDuckGo HTML endpoint; unofficial, soft-blocks around 30/min per IP and sometimes refuses an address outright; cookie jar and 202 retry built in; short snippets |

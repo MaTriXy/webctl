@@ -34,10 +34,11 @@ func newRootCmd() *cobra.Command {
 (TypeSafe's System One model) score every result for topic and source
 quality, so only results worth reading reach your context window.
 
-Required: a Jev key (webctl setup). Nothing else: search runs
-through ketch (github.com/1broseidon/ketch) and DuckDuckGo, or your own
-SearXNG. Paid providers join only when you set a key. Throttled providers
-back off (see "cooldown").
+Required: a Jev key (webctl setup). A search key is strongly advised
+(Brave: 5,000 free searches a month). Without one, search uses the
+keyless Exa, Parallel, Keenable, You.com, and Firecrawl endpoints, then
+DuckDuckGo; these throttle by IP, and throttled providers back off (see
+"cooldown").
 
 ALWAYS pass --goal. It is the single biggest lever on result quality:
 the query goes to the engines, the goal goes to every Jev judge next to

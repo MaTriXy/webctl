@@ -26,7 +26,7 @@ import (
 // Defaults.
 const (
 	DefaultProvider = "" // auto: first usable in Chain order
-	DefaultNum      = 10
+	DefaultNum      = 20
 	DefaultMinScore = 6.0 // jev.DefaultCut(4): "useful" or better on the 0–10 scale
 	// DefaultSources is how many providers a search gathers from and fuses.
 	DefaultSources  = 3
@@ -292,8 +292,9 @@ func (c *Config) JevKey() (string, error) {
 // provider from config comes first (an error if it is unusable, since the
 // user asked for it), then searxng and degoog when their URLs are set,
 // then every provider with a key in Keyed order. With no key at all the
-// chain is ketch then ddg. Setting a key is a choice of engine, so the
-// free tiers leave the chain as soon as one exists.
+// chain is provider.KeylessChain: the hosted keyless endpoints, then ddg.
+// Setting a key is a choice of engine, so the free tiers leave the chain
+// as soon as one exists.
 func (c *Config) Chain(explicit string) ([]string, error) {
 	if explicit = provider.Normalize(explicit); explicit != "" {
 		return []string{explicit}, nil
@@ -329,10 +330,11 @@ func (c *Config) Chain(explicit string) ([]string, error) {
 		}
 	}
 	if keyed == 0 {
-		// Nothing configured: ketch runs its own chain of free tiers, and
-		// DuckDuckGo is the last resort.
-		add("ketch")
-		add("ddg")
+		// Nothing configured: the hosted keyless endpoints directly, with
+		// DuckDuckGo as the last resort.
+		for _, name := range provider.KeylessChain() {
+			add(name)
+		}
 	}
 	return chain, nil
 }

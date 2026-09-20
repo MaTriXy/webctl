@@ -35,7 +35,7 @@ webctl setup        # asks for your Jev key
 webctl search "mechanistic interpretability 2026" --goal "Recent papers on sparse autoencoders and circuit analysis"
 ```
 
-Searching does not require keys for hobbyist-level usage: with none configured, webctl runs through [ketch](https://github.com/1broseidon/ketch) (its own chain of free tiers) and DuckDuckGo, and backs off from rate limits with a cooldown ladder.
+Searching does not strictly require a key: with none configured, webctl calls the keyless Exa, Parallel, Keenable, You.com, and Firecrawl endpoints directly, then DuckDuckGo. Those throttle by IP after a few dozen searches a day, and webctl backs off with a cooldown ladder, so expect thin results without a key.
 
 The author prefers [Brave Search](https://brave.com/search/api/): 5,000 free searches a month, requires an API key. It is the first choice in `webctl setup`; once any search key is configured, only your keyed providers are used. ([docs/providers.md](docs/providers.md))
 
@@ -172,12 +172,12 @@ One pipeline: search providers → dedupe → Jev scores → threshold → optio
 
 ```bash
 webctl search "q" --goal "what you actually need"
-webctl search "q" -n 20            # results to request per provider
+webctl search "q" -n 40            # results to request per provider (default 20)
 ```
 
 ### Providers
 
-Up to three providers per search, rankings fused by reciprocal rank: your SearXNG or Degoog if set, then the providers you set a key for (Brave first); ketch and DuckDuckGo only when no key exists. [docs/providers.md](docs/providers.md)
+Up to three providers per search, rankings fused by reciprocal rank: your SearXNG or Degoog if set, then the providers you set a key for (Brave first); keyless endpoints and DuckDuckGo only when no key exists. [docs/providers.md](docs/providers.md)
 
 ```bash
 webctl search "q" -p exa           # exactly one provider
@@ -263,11 +263,11 @@ webctl eval report --cases
 
 ## Providers
 
-Chain order: your `searxng` or `degoog` if set, then the providers you set a key for. `ketch` and `ddg` are used only when no key is set. Up to three are queried per search and fused. Full table with limits and cost: `webctl docs providers`.
+Chain order: your `searxng` or `degoog` if set, then the providers you set a key for. The keyless endpoints and `ddg` are used only when no key is set. Up to three are queried per search and fused. Full table with limits and cost: `webctl docs providers`.
 
 | keyless | keyed |
 |---|---|
-| `ketch` (own chain of free tiers), `ddg`, `searxng` and `degoog` (your instances), `exa`, `parallel`, `youcom`, `firecrawl`, `keenable` (name with `-p` to use keyless) | `exa`, `parallel`, `sonar`, `youcom`, `brave`, `tavily`, `firecrawl`, `keenable`, `serpbase`, `serply` |
+| `exa`, `parallel`, `keenable`, `youcom`, `firecrawl` (throttled by IP), `ddg`, `searxng` and `degoog` (your instances), `ketch` (if installed, via `-p`) | `exa`, `parallel`, `sonar`, `youcom`, `brave`, `tavily`, `firecrawl`, `keenable`, `serpbase`, `serply` |
 
 ```bash
 webctl keys set brave        # a key puts the provider in the chain

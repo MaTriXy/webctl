@@ -77,6 +77,16 @@ func Normalize(name string) string {
 	return name
 }
 
+// KeylessChain is the order tried when no search key is configured: the
+// hosted endpoints that answer without a key, best first, then DuckDuckGo.
+// Each throttles by IP after a few dozen queries a day; the chain's
+// cooldowns rotate past a throttled one. ketch is deliberately absent: it
+// is a separate binary that covers the same endpoints, and is reachable
+// with -p ketch.
+func KeylessChain() []string {
+	return []string{"parallel", "exa", "keenable", "youcom", "firecrawl", "ddg"}
+}
+
 // Keyless reports whether the named provider works without an API key.
 // Exa and Parallel fall back to their hosted MCP endpoints without one.
 func Keyless(name string) bool {
