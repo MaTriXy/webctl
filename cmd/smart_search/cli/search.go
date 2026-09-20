@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net/url"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -46,7 +46,7 @@ func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, sonar, ddg, or searxng (default: auto — keyed providers with a key, then keyless exa and parallel, then ddg, then searxng)")
 	f.IntVarP(&sf.num, "num", "n", 0, "number of results to request from the provider (default 10)")
-	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "minimum Jev relevance score to keep a result (default 1.0; with --noul, minimum P(yes), default 0.5)")
+	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "minimum Jev relevance score to keep a result (default: one below the rubric's top, i.e. 2.0 on the 0–3 scale; with --noul, minimum P(yes), default 0.5)")
 	f.BoolVar(&sf.jsonOut, "json", false, "emit results as JSON")
 	f.BoolVar(&sf.urlsOnly, "urls-only", false, "print only result URLs, one per line")
 	f.BoolVar(&sf.noFilter, "no-filter", false, "skip Jev qualification and print raw provider results")
@@ -211,7 +211,12 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 			return searchOptions{}, err
 		}
 		opts.Rubric = rubric
-		if max := float64(len(rubric) - 1); opts.MinScore > max {
+		max := float64(len(rubric) - 1)
+		if !explicitMin {
+			// Same rule as the default rubric: keep the top two levels.
+			opts.MinScore = math.Max(max-1, 0)
+		}
+		if opts.MinScore > max {
 			return searchOptions{}, fmt.Errorf("--min-score %.2f exceeds the rubric's top score of %g", opts.MinScore, max)
 		}
 	}
@@ -279,10 +284,11 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		raw := toRaw(results, engines)
 		if opts.Scrape && opts.Format != formatURLs {
 			urls := make([]string, len(raw))
+			fallback := make([]string, len(raw))
 			for i, r := range raw {
-				urls[i] = r.URL
+				urls[i], fallback[i] = r.URL, r.Content
 			}
-			pages := scrapePages(ctx, opts, chunkFilter, urls)
+			pages := scrapePages(ctx, opts, chunkFilter, urls, fallback)
 			for i := range raw {
 				raw[i].Page = &pages[i]
 			}
@@ -318,14 +324,15 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 	if opts.Scrape && opts.Format != formatURLs {
 		// Only kept results are worth fetching.
 		var idx []int
-		var urls []string
+		var urls, fallback []string
 		for i, r := range ranked {
 			if r.Kept {
 				idx = append(idx, i)
 				urls = append(urls, r.Result.URL)
+				fallback = append(fallback, r.Result.Content)
 			}
 		}
-		pages := scrapePages(ctx, opts, chunkFilter, urls)
+		pages := scrapePages(ctx, opts, chunkFilter, urls, fallback)
 		for j, i := range idx {
 			ranked[i].Page = &pages[j]
 		}
@@ -340,6 +347,9 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 type pageContent struct {
 	Content string
 	Err     error
+	// Fallback is set when Content is the provider's excerpt because the
+	// page could not be fetched.
+	Fallback bool
 	// Filtered is set when --filter-chunks ran on this page. FilterErr
 	// records a Jev failure, in which case Content is the unfiltered text.
 	Filtered    bool
@@ -353,7 +363,9 @@ type pageContent struct {
 // scrapePages fetches every URL (aligned with urls), caps each page's text,
 // and, when q is non-nil, keeps only the chunks Jev judges relevant. Each
 // page's chunks go to Jev in a single batch request; pages run concurrently.
-func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls []string) []pageContent {
+// fallback (aligned with urls) is the provider's excerpt, used when a fetch
+// fails.
+func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fallback []string) []pageContent {
 	out := make([]pageContent, len(urls))
 	if len(urls) == 0 {
 		return out
@@ -362,7 +374,9 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls []st
 	for i, p := range pages {
 		out[i] = pageContent{Content: p.Content, Err: p.Err}
 		if p.Err != nil {
-			out[i].Content = ""
+			// A page behind a wall still has the provider's excerpt.
+			out[i].Content = scrape.Truncate(fallback[i], opts.MaxChars)
+			out[i].Fallback = out[i].Content != ""
 		}
 		out[i].RawChars = len([]rune(out[i].Content))
 	}
@@ -373,7 +387,7 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls []st
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, jev.DefaultConcurrency)
 	for i := range out {
-		if out[i].Err != nil || out[i].Content == "" {
+		if out[i].Content == "" {
 			continue
 		}
 		wg.Add(1)
@@ -414,10 +428,13 @@ func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 	if opts.Format != formatPretty && !opts.Verbose {
 		return
 	}
-	var failed, rawChars, chars, total, kept, filterFailed int
+	var failed, fallback, rawChars, chars, total, kept, filterFailed int
 	for _, p := range pages {
 		if p.Err != nil {
 			failed++
+			if p.Fallback {
+				fallback++
+			}
 		}
 		rawChars += p.RawChars
 		chars += len([]rune(p.Content))
@@ -429,7 +446,11 @@ func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 	}
 	fmt.Fprintf(w, "scraped %d page(s)", len(pages))
 	if failed > 0 {
-		fmt.Fprintf(w, " (%d failed)", failed)
+		fmt.Fprintf(w, " (%d failed", failed)
+		if fallback > 0 {
+			fmt.Fprintf(w, ", %d using the provider excerpt", fallback)
+		}
+		fmt.Fprint(w, ")")
 	}
 	if opts.FilterChunks {
 		fmt.Fprintf(w, "; chunks %d → %d kept; %d → %d chars", total, kept, rawChars, chars)
@@ -508,53 +529,35 @@ func searchMulti(ctx context.Context, cfg *config.Config, chain []string, query 
 	return strings.Join(names, "+"), results, engines, nil
 }
 
-// Chain timing: one provider attempt is bounded by attemptTimeout so a hung
-// backend cannot eat the whole run, and the chain as a whole by chainBudget
-// so a run of slow failures still ends promptly. Tests shorten both.
+// Chain timing, overridable by tests.
 var (
-	attemptTimeout = 12 * time.Second
-	chainBudget    = 30 * time.Second
+	attemptTimeout = provider.DefaultAttemptTimeout
+	chainBudget    = provider.DefaultChainBudget
 )
 
+// newChain wraps chain in a lazily-constructed provider.Chain that reports
+// fall-throughs to errOut.
+func newChain(cfg *config.Config, chain []string, errOut io.Writer) *provider.Chain {
+	return &provider.Chain{
+		Names:          chain,
+		New:            func(name string) (provider.Provider, error) { return newProvider(cfg, name) },
+		AttemptTimeout: attemptTimeout,
+		Budget:         chainBudget,
+		OnFallthrough: func(failed string, err error, next string) {
+			fmt.Fprintf(errOut, "%s failed (%v); trying %s\n", failed, err, next)
+		},
+	}
+}
+
 // searchChain tries each provider in order and returns the first successful
-// search. Failures are reported to errOut as the chain falls through; if every
-// provider fails, the joined errors are returned.
+// search, reporting fall-throughs to errOut.
 func searchChain(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (string, []provider.SearchResult, error) {
-	chainCtx, cancelChain := context.WithTimeout(ctx, chainBudget)
-	defer cancelChain()
-	var errs []error
-	for i, name := range chain {
-		p, err := newProvider(cfg, name)
-		if err == nil {
-			var results []provider.SearchResult
-			attemptCtx, cancel := context.WithTimeout(chainCtx, attemptTimeout)
-			results, err = p.Search(attemptCtx, query, num)
-			cancel()
-			// An empty answer from a keyless tier usually means it is
-			// throttled, so it only counts when no provider is left.
-			if err == nil && (len(results) > 0 || i+1 == len(chain)) {
-				return p.Name(), results, nil
-			}
-			if err == nil {
-				err = errors.New("no results")
-			}
-		}
-		errs = append(errs, err)
-		if ctx.Err() != nil {
-			break
-		}
-		if chainCtx.Err() != nil {
-			errs = append(errs, fmt.Errorf("chain budget of %s exhausted", chainBudget))
-			break
-		}
-		if i+1 < len(chain) {
-			fmt.Fprintf(errOut, "%s failed (%v); trying %s\n", name, err, chain[i+1])
-		}
+	c := newChain(cfg, chain, errOut)
+	results, err := c.Search(ctx, query, num)
+	if err != nil {
+		return "", nil, err
 	}
-	if len(errs) == 1 {
-		return "", nil, errs[0]
-	}
-	return "", nil, fmt.Errorf("all %d providers failed: %w", len(errs), errors.Join(errs...))
+	return c.Name(), results, nil
 }
 
 // rankedResult is a qualified result plus the pipeline's keep/drop decision.
@@ -663,6 +666,9 @@ func pageFields(p *pageContent) (content, scrapeErr string, total, kept *int, fi
 	content = p.Content
 	if p.Err != nil {
 		scrapeErr = p.Err.Error()
+		if p.Fallback {
+			scrapeErr += " (content is the provider excerpt)"
+		}
 	}
 	if p.Filtered {
 		t, k := p.ChunksTotal, p.ChunksKept
@@ -763,7 +769,10 @@ func writeContent(w io.Writer, p *pageContent) {
 	}
 	if p.Err != nil {
 		fmt.Fprintf(w, "    ! scrape failed: %v\n", p.Err)
-		return
+		if !p.Fallback {
+			return
+		}
+		fmt.Fprintln(w, "    (showing the provider's excerpt instead)")
 	}
 	if p.FilterErr != nil {
 		fmt.Fprintf(w, "    ! chunk filter failed: %v (showing unfiltered content)\n", p.FilterErr)

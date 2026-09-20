@@ -132,7 +132,7 @@ func TestLoadFSAndListFS(t *testing.T) {
 
 func TestEmbeddedPrompts(t *testing.T) {
 	names := List()
-	want := []string{ChunkRelevance, RelevanceBatch, RelevanceNoul, RelevanceScore, ThemeCoverage}
+	want := []string{ChunkRelevance, RelevanceBatch, RelevanceNoul, RelevanceScore, SourceQuality, ThemeCoverage}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("List = %v, want %v", names, want)
 	}

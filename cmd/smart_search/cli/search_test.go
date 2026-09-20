@@ -154,7 +154,7 @@ func newHarness(t *testing.T, store keys.Store) *harness {
 		t:    t,
 		dir:  dir,
 		prov: &fakeProvider{name: "exa", results: []provider.SearchResult{blog, paper, wiki}},
-		qual: &fakeQualifier{scores: map[string]float64{paper.URL: 2.9, wiki.URL: 1.6, blog.URL: 0.3}},
+		qual: &fakeQualifier{scores: map[string]float64{paper.URL: 2.9, wiki.URL: 2.4, blog.URL: 0.3}},
 	}
 	origProv, origQual := newProvider, newQualifier
 	newProvider = func(cfg *config.Config, name string) (provider.Provider, error) {
@@ -230,7 +230,7 @@ func TestSearchDefaultFiltersAndSorts(t *testing.T) {
 	if strings.Contains(out, "Probabilities") || strings.Contains(out, "✓ Kept") {
 		t.Errorf("verbose-only lines should not appear:\n%s", out)
 	}
-	if !strings.Contains(errOut, "exa: 3 results → 2 kept (min score 1)") {
+	if !strings.Contains(errOut, "exa: 3 results → 2 kept (min score 2)") {
 		t.Errorf("summary missing from stderr: %q", errOut)
 	}
 }
@@ -248,7 +248,7 @@ func TestSearchVerbose(t *testing.T) {
 		"[3] SEO blog — content-farm.example",
 		"Probabilities: {0: 0.05, 1: 0.05, 2: 0.05, 3: 0.80}",
 		"✓ Kept",
-		"✗ Filtered (below 1 threshold)",
+		"✗ Filtered (below 2 threshold)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verbose output missing %q:\n%s", want, out)
@@ -311,12 +311,12 @@ func TestSearchURLsOnly(t *testing.T) {
 
 func TestSearchMinScore(t *testing.T) {
 	h := newHarness(t, allKeys())
-	out, _, err := h.run("--urls-only", "--min-score", "2", "q")
+	out, _, err := h.run("--urls-only", "--min-score", "2.5", "q")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out != paper.URL+"\n" {
-		t.Errorf("min-score 2 should keep only the paper, got %q", out)
+		t.Errorf("min-score 2.5 should keep only the paper, got %q", out)
 	}
 
 	out, _, err = h.run("--urls-only", "-m", "0", "q")

@@ -516,7 +516,7 @@ func TestAnswerConversions(t *testing.T) {
 
 func TestDefaultRubric(t *testing.T) {
 	r := DefaultRubric()
-	if len(r) != 4 || !strings.HasPrefix(r[0], "Completely irrelevant") {
+	if len(r) != 4 || !strings.HasPrefix(r[0], "Off-topic") || !strings.HasPrefix(r[3], "Best available") {
 		t.Errorf("DefaultRubric = %v", r)
 	}
 	r[0] = "mutated"

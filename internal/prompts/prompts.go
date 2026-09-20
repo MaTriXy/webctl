@@ -26,6 +26,7 @@ const (
 	RelevanceBatch = "relevance-batch"
 	ThemeCoverage  = "theme-coverage"
 	ChunkRelevance = "chunk-relevance"
+	SourceQuality  = "source-quality"
 )
 
 // Prompt is a parsed OKF prompt file.

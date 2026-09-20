@@ -5,19 +5,25 @@ type: score
 model: jev-latest
 batch: true
 criteria:
-  - "Completely irrelevant — different topic entirely"
-  - "Tangentially related — mentions keywords but doesn't address the query"
-  - "Relevant — directly addresses the query with substantive content"
-  - "Highly relevant — exactly what the user is looking for"
+  - "Off-topic: about a different subject, or a different meaning of the query's words"
+  - "Low value: on-topic but generic or derivative — an SEO/affiliate/content-farm rewrite, a product listing or aggregator, or a page that only mentions the topic"
+  - "Useful: substantive treatment from a credible source, such as documentation, a reputable publication, a practitioner's write-up, or a Q&A with real answers"
+  - "Best available: a primary source, official docs, original research, or first-hand practitioner experience — the page an expert would open first for this query"
 ---
 
 The state contains the user's query and a list of search results, each with
-an id. How relevant is the result with id "{{.ID}}" to the user's query?
+an id. The user is an expert researching the query and wants only high-signal
+sources in their context window. Score the result with id "{{.ID}}" and judge
+only that one result.
 
-Judge only that one result. Would opening it help the user with what they
-asked for? Penalize pages that merely mention the query's keywords, content
-farms, and results about a different subject. Reward pages whose substance
-directly answers or addresses the query.
+Judge two things together: whether the page is about what the user asked, and
+whether it is a source worth reading. Read the query for intent — "real user
+experiences", "what the studies say", or a term with several meanings tells
+you which pages count. Use the URL: community threads (Reddit, Hacker News,
+forums), official documentation, source repositories, reputable publications,
+and authors with first-hand experience outrank anonymous blogs, "best X in
+2026" listicles, affiliate review sites, and content farms that restate common
+knowledge. A page that merely matches the query's keywords is not enough.
 
 Query: {{.Query}}
 

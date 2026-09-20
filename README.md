@@ -4,9 +4,9 @@ Web search from the terminal, filtered by [Jev](https://typesafe.ai) so only rel
 
 ```
 query ──▶ search backend ──▶ Jev relevance filter ──▶ ranked results
-          (exa / parallel /    (score 0–3 per hit,      (noise dropped,
-           sonar / ddg /        drop below threshold)    optional page
-           searxng)                                      scraping)
+          (exa / parallel /    (score 0–3 per hit:      (noise dropped,
+           sonar / ddg /        topic + source quality,  optional page
+           searxng)             drop below threshold)    scraping)
 ```
 
 ## Install
@@ -50,7 +50,7 @@ smart_search --random "transformer circuits" # one random backend, fall back on 
 ## Filtering
 
 ```bash
-smart_search --min-score 2 "q"                        # stricter (default 1.0 on a 0–3 scale)
+smart_search --min-score 3 "q"                        # stricter (default 2.0 on a 0–3 scale)
 smart_search --noul "Is this a peer-reviewed paper?" "q"  # yes/no question instead of a score
 smart_search --rubric "off-topic,related,on-point" "q"    # custom scale
 smart_search --batch "q"                              # one Jev request for all results
