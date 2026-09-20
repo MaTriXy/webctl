@@ -470,7 +470,24 @@ func TestExaKeylessRateLimitNotice(t *testing.T) {
 	t.Cleanup(srv.Close)
 	_, err := NewExa("", Options{BaseURL: srv.URL}).Search(context.Background(), "q", 3)
 	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.Status != 429 || !strings.Contains(err.Error(), "rate limit") {
+	if !errors.As(err, &apiErr) || apiErr.Status != 429 || !strings.Contains(err.Error(), "keys set exa") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestAPIErrorMessages(t *testing.T) {
+	quota := (&APIError{Provider: "You.com", Status: 402, Body: "long marketing copy"}).Error()
+	if strings.Contains(quota, "marketing") || !strings.Contains(quota, "keys set youcom") || !strings.Contains(quota, "402") {
+		t.Errorf("402 message = %q", quota)
+	}
+	if got := (&APIError{Provider: "Exa", Status: 401}).Error(); !strings.Contains(got, "key rejected") {
+		t.Errorf("401 message = %q", got)
+	}
+	if got := (&APIError{Provider: "SearXNG", Status: 500, Body: "boom"}).Error(); got != "SearXNG API returned HTTP 500: boom" {
+		t.Errorf("500 message = %q", got)
+	}
+	sse := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"level\":\"error\",\"data\":\"Free tier limit exceeded.\"}}\n\n"
+	if got := summarizeBody([]byte(sse)); got != "Free tier limit exceeded." {
+		t.Errorf("SSE summary = %q", got)
 	}
 }

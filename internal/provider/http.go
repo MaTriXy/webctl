@@ -21,19 +21,34 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
+	// Quota and auth failures get a fixed one-line message: the provider's
+	// own body is marketing copy that does not fit on a terminal line.
+	switch e.Status {
+	case http.StatusTooManyRequests, http.StatusPaymentRequired:
+		return fmt.Sprintf("%s: rate limited or free quota spent (HTTP %d); %s or try again later", e.Provider, e.Status, e.keyHint())
+	case http.StatusUnauthorized, http.StatusForbidden:
+		if e.keySlug() != "" {
+			return fmt.Sprintf("%s: key rejected (HTTP %d); check it with `smart_search keys validate`", e.Provider, e.Status)
+		}
+	}
 	msg := fmt.Sprintf("%s API returned HTTP %d", e.Provider, e.Status)
 	if e.Body != "" {
 		msg += ": " + e.Body
 	}
-	switch e.Status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		msg += " (check your API key with `smart_search keys validate`)"
-	case http.StatusTooManyRequests:
-		msg += " (rate limited; try again shortly)"
-	case http.StatusPaymentRequired:
-		msg += " (free quota spent; add a key or wait)"
-	}
 	return msg
+}
+
+// keySlug is the `keys set` name for keyed providers, "" for the rest.
+func (e *APIError) keySlug() string {
+	return map[string]string{"Exa": "exa", "Parallel": "parallel", "You.com": "youcom", "Sonar": "sonar"}[e.Provider]
+}
+
+// keyHint names the command that lifts a provider's keyless limits.
+func (e *APIError) keyHint() string {
+	if slug := e.keySlug(); slug != "" {
+		return "add a key with `smart_search keys set " + slug + "`"
+	}
+	return "add an API key"
 }
 
 // Unauthorized reports whether the error indicates a rejected API key.
@@ -119,6 +134,13 @@ func summarizeBody(b []byte) string {
 	if s == "" {
 		return ""
 	}
+	// An MCP error may arrive as an event stream; the message is in the
+	// last data frame.
+	if strings.Contains(s, "data:") {
+		if data, err := lastSSEData(b); err == nil {
+			b = data
+		}
+	}
 	var generic map[string]any
 	if json.Unmarshal(b, &generic) == nil {
 		for _, k := range []string{"error", "message", "detail", "msg"} {
@@ -131,6 +153,12 @@ func summarizeBody(b []byte) string {
 				}
 			}
 		}
+		// JSON-RPC notifications carry the text under params.data.
+		if params, ok := generic["params"].(map[string]any); ok {
+			if d, ok := params["data"].(string); ok {
+				return truncate(collapseWhitespace(d), 200)
+			}
+		}
 	}
-	return truncate(collapseWhitespace(s), 200)
+	return truncate(collapseWhitespace(string(b)), 200)
 }
