@@ -49,6 +49,19 @@ smart_search --random "transformer circuits" # one random backend, fall back on 
 
 Duplicate hits (same URL, or the same title from several hosts such as an arXiv abstract, its PDF, and a proceedings mirror) are collapsed before filtering.
 
+### Your own SearXNG (no quotas)
+
+The keyless tiers throttle after a few dozen searches. A local SearXNG has no quota and aggregates Google, Bing, and others:
+
+```bash
+docker run -d --name searxng -p 8899:8080 \
+  -v "$PWD/docs/searxng/settings.yml:/etc/searxng/settings.yml:ro" searxng/searxng:latest
+export SEARXNG_URL=http://localhost:8899          # or: smart_search keys set searxng --value http://localhost:8899
+export SMART_SEARCH_PROVIDER=searxng               # optional: try it first
+```
+
+`docs/searxng/settings.yml` enables the JSON format the client needs and turns the rate limiter off for local use.
+
 ## Filtering
 
 ```bash

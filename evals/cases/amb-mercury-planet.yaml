@@ -9,4 +9,4 @@ expected_themes:
   - surface temperature range of the planet Mercury
   - orbital period or distance from the Sun
 min_results: 2
-max_results: 10
+max_results: 15

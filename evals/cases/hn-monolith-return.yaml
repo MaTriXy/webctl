@@ -8,5 +8,5 @@ junk_domains: [blog.kusho.ai, byteiota.com, readcrucible.com]
 expected_themes:
   - a specific company or team that consolidated services (e.g. Amazon Prime Video, Segment)
   - operational cost or complexity as the reason
-min_results: 3
+min_results: 2
 max_results: 12

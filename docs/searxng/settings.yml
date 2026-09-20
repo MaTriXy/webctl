@@ -1,0 +1,11 @@
+use_default_settings: true
+server:
+  secret_key: "smart-search-eval-local-only"
+  limiter: false
+  image_proxy: false
+search:
+  formats: [html, json]
+  autocomplete: ""
+engines:
+  - name: duckduckgo
+    disabled: true
