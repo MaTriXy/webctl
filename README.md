@@ -4,24 +4,41 @@ Web search from the terminal, filtered by [Jev](https://typesafe.ai) so only rel
 
 ```
 You:    "latest advances in mechanistic interpretability 2025"
-         │
-         ▼
-    ┌─────────────┐
-    │  Search API  │  (exa / parallel / sonar / youcom / ddg / searxng)
-    │  50 results  │
-    └──────┬──────┘
-           │
-           ▼
-    ┌─────────────┐
-    │     Jev      │  typed relevance scoring
-    │  per result  │  (score 0–3: topic + source quality)
-    └──────┬──────┘
-           │
-           ▼
-    ┌─────────────┐
-    │  8 results   │  ✂️  low scorers dropped
-    │  (relevant)  │  ✅  high scorers kept
-    └─────────────┘
+              │
+              ▼
+      ┌──────────────┐
+      │  Search API  │  (exa / parallel / sonar / youcom / ddg / searxng)
+      │  25 results  │
+      └───────┬──────┘
+              │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │
+              ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼
+      ┌───────────────────────────────────────────────────────┐
+      │                          Jev                          │  typed relevance scoring
+      │        "is this on-topic, from a good source?"        │
+      └───────┬───────┬───────┬───────┬───────┬───────┬───────┘
+              │       │       │       │       │       │   ✂️  the rest dropped
+              ▼       ▼       ▼       ▼       ▼       ▼
+      ┌────────────────────────────────────────────────────┐
+      │              10–15 results (relevant)              │  ✅ kept
+      └────────────────────────────────────────────────────┘
+
+--scrape --filter-chunks gives each kept page the same treatment:
+
+      ┌──────────────┐
+      │ Scraped page │  (~2000 chars per chunk)
+      │  25 chunks   │
+      └───────┬──────┘
+              │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │
+              ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼
+      ┌───────────────────────────────────────────────────────┐
+      │                          Jev                          │  one batch request per page
+      │         "is this chunk relevant to the query?"        │
+      └───────┬───────┬───────┬───────┬───────────────────────┘
+              │       │       │       │   ✂️  irrelevant chunks dropped
+              ▼       ▼       ▼       ▼
+      ┌──────────────────────────────────┐
+      │      3–6 chunks (relevant)       │  ✅ reassembled as the page text
+      └──────────────────────────────────┘
 ```
 
 ## Install
