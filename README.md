@@ -2,6 +2,41 @@
 
 Web search from the terminal, filtered by [Jev](https://typesafe.ai) so only relevant results reach your context window.
 
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Backends](#backends)
+- [Filtering](#filtering)
+- [Scraping](#scraping)
+- [Output](#output)
+- [Docs](#docs)
+- [Other commands](#other-commands)
+
+## Quick start
+
+```bash
+go install github.com/dorkitude/multi_search_web/cmd/multi_search_web@latest
+multi_search_web setup        # asks for your Jev key; stored in ~/secrets/keys.json (0600)
+multi_search_web "latest advances in mechanistic interpretability"
+```
+
+Required: a Jev key from [typesafe.ai](https://typesafe.ai). Search runs on the keyless Exa, Parallel, and You.com endpoints, with DuckDuckGo as a last resort. Search API keys and a local SearXNG are optional.
+
+| Setting | Env var | Needed for |
+|---|---|---|
+| Jev key | `JEV_API_KEY` | relevance filtering, `--filter-chunks` |
+| Exa / Parallel / Sonar / You.com key | `EXA_API_KEY`, `PARALLEL_API_KEY`, `SONAR_API_KEY`, `YOUCOM_API_KEY` | keyed backends (Exa, Parallel, and You.com also work without one) |
+| SearXNG URL | `SEARXNG_URL` | self-hosted metasearch |
+
+The keys file may be shared with other tools; unknown fields are preserved. Point elsewhere with `--keys-file`, `MULTI_SEARCH_WEB_KEYS_FILE`, or `keys_file` in `~/multi_search_web/config.yaml`.
+
+`--no-filter` returns raw fused results and is the only mode that works without a Jev key.
+
+## How it works
+
+### Schematics
+
+Filter search engine results to save tokens:
+
 ```
 You:    "latest advances in mechanistic interpretability 2025"
               │
@@ -21,9 +56,11 @@ You:    "latest advances in mechanistic interpretability 2025"
       ┌────────────────────────────────────────────────────┐
       │              10–15 results (relevant)              │  ✅ kept
       └────────────────────────────────────────────────────┘
+```
 
---scrape --filter-chunks gives each kept page the same treatment:
+Filter chunks of scraped webpages to save even more tokens (`--scrape --filter-chunks`):
 
+```
       ┌──────────────┐
       │ Scraped page │  (~2000 chars per chunk)
       │  25 chunks   │
@@ -41,34 +78,59 @@ You:    "latest advances in mechanistic interpretability 2025"
       └──────────────────────────────────┘
 ```
 
-## Install
+Deduplicate results:
 
-```bash
-go install github.com/dorkitude/multi_search_web/cmd/multi_search_web@latest
+```
+      ┌──────────────┐
+      │  3 engines   │
+      │  45 results  │
+      └───────┬──────┘
+              │  pass 1: same normalized URL or title → collapsed  ✂️
+              ▼
+      ┌──────────────┐
+      │  25 results  │  ──►  Jev scores them (diagram 1)
+      └───────┬──────┘
+              │  pass 2: MinHash LSH over each excerpt
+              ▼
+      ┌───────────────────────────────────────────────────────┐
+      │  candidate pairs (a few)                              │  A~B  C~D  E~F
+      └───────┬───────────────┬───────────────┬───────────────┘
+              ▼               ▼               ▼
+      ┌───────────────────────────────────────────────────────┐
+      │                          Jev                          │  one batch request
+      │           "are these two the same content?"           │
+      └───────┬───────────────┬───────────────────────────────┘
+              │ yes           │ yes            ✂️  no: both stay
+              ▼               ▼
+      ┌───────────────────────────────────────────────────────┐
+      │  best-scored copy kept, engine tags merged            │  ✅ others listed as duplicates
+      └───────────────────────────────────────────────────────┘
 ```
 
-## Quick start
+Respect rate limits with automatic cooldowns:
 
-```bash
-multi_search_web setup        # asks for your Jev key; stored in ~/secrets/keys.json (0600)
-multi_search_web "latest advances in mechanistic interpretability"
 ```
+      search ──► exa ──► HTTP 429 (rate limited) or 402 (quota spent)
+                                    │
+                                    ▼
+      ┌───────────────────────────────────────────────────────┐
+      │  ~/multi_search_web/cooldown.json                     │  shared by every process
+      │  exa: strike 1, skip until +15m                       │
+      └───────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+      next search ──► exa (skipped) ──► parallel ──► youcom ──► ddg ──► searxng
 
-One thing is required: a Jev key (from [typesafe.ai](https://typesafe.ai)), because Jev is the filter. Nothing else is. Search runs on the keyless Exa, Parallel, and You.com endpoints, with DuckDuckGo as a last resort; search API keys or a local SearXNG only lift rate limits.
-
-| Setting | Env var | Needed for |
-|---|---|---|
-| Jev key | `JEV_API_KEY` | relevance filtering, `--filter-chunks` |
-| Exa / Parallel / Sonar / You.com key | `EXA_API_KEY`, `PARALLEL_API_KEY`, `SONAR_API_KEY`, `YOUCOM_API_KEY` | keyed backends (Exa, Parallel, and You.com also work without one) |
-| SearXNG URL | `SEARXNG_URL` | self-hosted metasearch |
-
-The keys file may be shared with other tools; unknown fields are preserved. Point elsewhere with `--keys-file`, `MULTI_SEARCH_WEB_KEYS_FILE`, or `keys_file` in `~/multi_search_web/config.yaml`.
-
-`--no-filter` returns raw fused results and is the only mode that works without a Jev key.
+      strike     1       2       3        4        5        6
+      window    15m ──► 1h ──► 4h ──► 12h ──► 24h ──► 72h ──► parked: one probe per 24h
+                                ▲
+                                └── a 402 starts here
+      any success ──► strikes reset to 0
+```
 
 ## Backends
 
-Every search gathers results from three providers (`sources`, configurable) and fuses their rankings by reciprocal rank, so one engine's blind spot or bad day is covered by the others. Providers are taken in this order, skipping any that are cooling down: configured keyed providers (exa, parallel, sonar, youcom), then Exa, Parallel, and You.com over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. A provider that fails or answers empty is replaced by the next one; if fewer than three are available, fewer are used. Each attempt is capped at 12s and the whole search at 30s. Results carry the engines that returned them.
+Every search gathers results from three providers (`sources`, configurable) and fuses their rankings by reciprocal rank. Providers are taken in this order, skipping any that are cooling down: configured keyed providers (exa, parallel, sonar, youcom), then Exa, Parallel, and You.com over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. A provider that fails or answers empty is replaced by the next one; if fewer than three are available, fewer are used. Each attempt is capped at 12s and the whole search at 30s. Results carry the engines that returned them.
 
 ```bash
 multi_search_web --sources 1 "transformer circuits"   # plain fallback chain: first provider that answers
@@ -80,22 +142,22 @@ multi_search_web config set sources 2                 # persist a default
 
 ### Duplicates
 
-Three engines return the same page at different addresses, and the web mirrors, syndicates, and rewrites everything. Two passes fold that:
+Two passes:
 
 1. Before Jev sees anything, results with the same normalized URL (no `www.`/`m.`/`amp.`, no tracking parameters) or the same title are collapsed.
-2. After scoring, near-duplicates are proposed by MinHash locality-sensitive hashing over word shingles of each result's excerpt: 64 hashes in 16 bands, so candidates come from shared hash buckets, not from comparing every pair. The candidate pairs (usually a handful) go to Jev in one batch request that asks whether each pair is the same content (mirror, abstract vs. PDF, syndicated copy, rewrite with nothing of its own). Confirmed groups keep the best-scored copy, merge the engine tags, and list the others under `duplicates` in `--json` and `Duplicate:` lines in the terminal.
+2. After scoring, near-duplicate pairs are proposed by MinHash locality-sensitive hashing over each result's excerpt and confirmed by Jev in one batch request. Confirmed groups keep the best-scored copy, merge the engine tags, and list the others under `duplicates` in `--json` and `Duplicate:` lines in the terminal.
 
 `--no-dedupe` skips the second pass.
 
 ### Cooldowns for rate-limiting
 
-The keyless tiers meter by the day. When a provider answers 429 (rate limited) or 402 (quota spent), it is skipped for a window that grows with each consecutive failure:
+When a provider answers 429 (rate limited) or 402 (quota spent), it is skipped for a window that grows with each consecutive failure:
 
 ```
 15m → 1h → 4h → 12h → 24h → 72h
 ```
 
-A 402 starts at the third step (4h) because a spent quota does not come back in fifteen minutes. At the top of the ladder the provider stays parked, and one probe request is allowed every 24h; a failed probe re-arms the 72h, a success resets everything. State lives in `~/multi_search_web/cooldown.json`, so every process on the machine honors it, and keyed and keyless use of a provider are tracked separately: adding a key clears that provider's cooldown.
+A 402 starts at the third step (4h). At the top of the ladder the provider stays parked, and one probe request is allowed every 24h; a failed probe re-arms the 72h, a success resets everything. State lives in `~/multi_search_web/cooldown.json`, so every process on the machine honors it. Keyed and keyless use of a provider are tracked separately: adding a key clears that provider's cooldown.
 
 A skipped provider is mentioned once an hour on stderr (every time with `--verbose`):
 
@@ -116,7 +178,7 @@ If every provider is cooling down and no SearXNG is configured, the search fails
 
 ### Your own SearXNG (no quotas)
 
-The keyless tiers throttle after a few dozen searches. A local SearXNG has no quota and aggregates Google, Bing, and others:
+A local SearXNG has no quota and aggregates Google, Bing, and others:
 
 ```bash
 docker run -d --name searxng -p 8899:8080 \
@@ -145,9 +207,9 @@ multi_search_web --scrape --filter-chunks "q"    # keep only the chunks Jev says
 multi_search_web --scrape --max-chars 20000 "q"  # cap content per page (default 50000)
 ```
 
-`--filter-chunks` splits each page into ~2000-char chunks, asks Jev about all of them in one batch request, and reassembles the survivors. A 50K-char page often shrinks to a few K of signal.
+`--filter-chunks` splits each page into ~2000-char chunks, asks Jev about all of them in one batch request, and reassembles the survivors.
 
-Reddit: `www.reddit.com` answers a plain GET with a JavaScript challenge page (HTTP 200, no content). The scraper solves it (the script's answer is the challenge token doubled), refetches with the resulting cookies, and reuses those cookies for the rest of the run. Comments ship inside a `<template>` element, which is read like any other block. Threads come back with post body and comments; a hard bot wall (HTTP 403, "Prove your humanity") is reported as an error.
+Reddit threads scrape with post body and comments; a hard bot wall (HTTP 403, "Prove your humanity") is reported as an error.
 
 ## Output
 
@@ -160,7 +222,7 @@ multi_search_web -n 20 "q"                   # results to request
 
 ## Docs
 
-`--help` is short on purpose. The full reference is compiled into the binary and mirrors `docs/`:
+`--help` is short. The full reference is compiled into the binary and mirrors `docs/`:
 
 ```bash
 multi_search_web docs            # topics
@@ -176,7 +238,7 @@ multi_search_web config set provider parallel   # persist a default in ~/multi_s
 multi_search_web config set min_score 2.2       # also: num, jev.base_url, jev.model, searxng_url, keys_file
 multi_search_web keys list|set|unset|validate   # non-interactive key management
 multi_search_web eval                           # run the eval suite (live calls; see evals/README.md)
-multi_search_web eval report --compare          # Markdown tables from the saved runs, per version
+multi_search_web eval report --cases            # Markdown tables from evals/results.db, per version
 multi_search_web --version                      # behavior version; bumped when results would change
 ```
 
