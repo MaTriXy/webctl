@@ -16,6 +16,7 @@ import (
 	"github.com/dorkitude/smart_search/internal/config"
 	"github.com/dorkitude/smart_search/internal/jev"
 	"github.com/dorkitude/smart_search/internal/provider"
+	"github.com/dorkitude/smart_search/internal/scrape"
 )
 
 // searchFlags holds the flag values for the search (root) command.
@@ -32,6 +33,8 @@ type searchFlags struct {
 	noul     string
 	multi    bool
 	random   bool
+	scrape   bool
+	maxChars int
 }
 
 var sf searchFlags
@@ -50,6 +53,8 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.StringVar(&sf.noul, "noul", "", "ask Jev a yes/no question about each result instead of scoring")
 	f.BoolVar(&sf.multi, "multi", false, "query every usable backend in parallel and fuse the rankings (RRF)")
 	f.BoolVar(&sf.random, "random", false, "query one random usable backend, falling back to the others on failure")
+	f.BoolVar(&sf.scrape, "scrape", false, "fetch each kept result's page and include its text content")
+	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap the content kept per page")
 }
 
 // qualifier is the slice of *jev.Client the search pipeline depends on.
@@ -58,8 +63,16 @@ type qualifier interface {
 	Qualify(ctx context.Context, query string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
 }
 
+// scraper is the slice of *scrape.Fetcher the pipeline depends on.
+type scraper interface {
+	FetchAll(ctx context.Context, urls []string, concurrency int) []scrape.Page
+}
+
 // Construction hooks. Tests override these to inject fakes.
 var (
+	newScraper = func(maxChars int) scraper {
+		return &scrape.Fetcher{MaxChars: maxChars}
+	}
 	newProvider = func(cfg *config.Config, name string) (provider.Provider, error) {
 		cred, err := cfg.ProviderKey(name)
 		if err != nil {
@@ -94,6 +107,9 @@ type searchOptions struct {
 	Rubric    []string
 	Noul      string
 	Format    outputFormat
+	// Scrape fetches page content for kept results; MaxChars caps it per page.
+	Scrape   bool
+	MaxChars int
 }
 
 type outputFormat int
@@ -143,6 +159,9 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	if f.provider != "" && (f.multi || f.random) {
 		return searchOptions{}, errors.New("--provider cannot be combined with --multi or --random")
 	}
+	if f.scrape && f.maxChars <= 0 {
+		return searchOptions{}, fmt.Errorf("--max-chars must be positive, got %d", f.maxChars)
+	}
 
 	opts := searchOptions{
 		Query:    query,
@@ -152,6 +171,8 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		Batch:    f.batch,
 		Verbose:  f.verbose,
 		Noul:     strings.TrimSpace(f.noul),
+		Scrape:   f.scrape,
+		MaxChars: f.maxChars,
 	}
 	if f.num > 0 {
 		opts.Num = f.num
@@ -239,7 +260,19 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		if len(results) == 0 && opts.Format == formatPretty {
 			fmt.Fprintf(errOut, "%s returned no results.\n", label)
 		}
-		return writeRaw(out, toRaw(results, engines), opts.Format)
+		raw := toRaw(results, engines)
+		if opts.Scrape && opts.Format != formatURLs {
+			urls := make([]string, len(raw))
+			for i, r := range raw {
+				urls[i] = r.URL
+			}
+			pages := scrapePages(ctx, opts, urls)
+			for i := range raw {
+				raw[i].Page = &pages[i]
+			}
+			writeScrapeSummary(errOut, pages, opts)
+		}
+		return writeRaw(out, raw, opts.Format)
 	}
 
 	if len(results) == 0 {
@@ -266,7 +299,68 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 	if opts.Format == formatPretty || opts.Verbose {
 		writeSummary(errOut, label, ranked, opts, usage)
 	}
+	if opts.Scrape && opts.Format != formatURLs {
+		// Only kept results are worth fetching.
+		var idx []int
+		var urls []string
+		for i, r := range ranked {
+			if r.Kept {
+				idx = append(idx, i)
+				urls = append(urls, r.Result.URL)
+			}
+		}
+		pages := scrapePages(ctx, opts, urls)
+		for j, i := range idx {
+			ranked[i].Page = &pages[j]
+		}
+		if opts.Format == formatPretty || opts.Verbose {
+			writeScrapeSummary(errOut, pages, opts)
+		}
+	}
 	return writeQualified(out, ranked, opts)
+}
+
+// pageContent is a result's scraped text plus what happened to it.
+type pageContent struct {
+	Content string
+	Err     error
+}
+
+// scrapePages fetches every URL (aligned with urls) and caps each page's text.
+func scrapePages(ctx context.Context, opts searchOptions, urls []string) []pageContent {
+	out := make([]pageContent, len(urls))
+	if len(urls) == 0 {
+		return out
+	}
+	pages := newScraper(opts.MaxChars).FetchAll(ctx, urls, scrape.DefaultConcurrency)
+	for i, p := range pages {
+		out[i] = pageContent{Content: p.Content, Err: p.Err}
+		if p.Err != nil {
+			out[i].Content = ""
+		}
+	}
+	return out
+}
+
+func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
+	if opts.Format != formatPretty && !opts.Verbose {
+		return
+	}
+	var failed, chars int
+	for _, p := range pages {
+		if p.Err != nil {
+			failed++
+		}
+		chars += len([]rune(p.Content))
+	}
+	fmt.Fprintf(w, "scraped %d page(s), %d chars", len(pages), chars)
+	if failed > 0 {
+		fmt.Fprintf(w, "; %d failed", failed)
+	}
+	fmt.Fprintln(w)
+	if opts.Format == formatPretty {
+		fmt.Fprintln(w)
+	}
 }
 
 // shuffleChain randomizes the order of a copy of chain. Tests override it.
@@ -365,6 +459,8 @@ type rankedResult struct {
 	Kept bool
 	// Engines lists the backends that returned this URL (multi mode only).
 	Engines []string
+	// Page is the scraped content (--scrape), nil when not fetched.
+	Page *pageContent
 }
 
 // rank sorts qualified results by relevance (highest first) and marks which
@@ -440,6 +536,21 @@ type outputResult struct {
 	Kept    bool     `json:"kept"`
 	Error   string   `json:"error,omitempty"`
 	Engines []string `json:"engines,omitempty"`
+
+	// --scrape fields.
+	Content     string `json:"content,omitempty"`
+	ScrapeError string `json:"scrape_error,omitempty"`
+}
+
+// fillPage copies scraped content into the JSON fields.
+func (o *outputResult) fillPage(p *pageContent) {
+	if p == nil {
+		return
+	}
+	o.Content = p.Content
+	if p.Err != nil {
+		o.ScrapeError = p.Err.Error()
+	}
 }
 
 func toOutput(r rankedResult) outputResult {
@@ -462,6 +573,7 @@ func toOutput(r rankedResult) outputResult {
 	if r.Err != nil {
 		o.Error = r.Err.Error()
 	}
+	o.fillPage(r.Page)
 	return o
 }
 
@@ -469,6 +581,21 @@ func toOutput(r rankedResult) outputResult {
 type rawResult struct {
 	provider.SearchResult
 	Engines []string `json:"engines,omitempty"`
+
+	Page *pageContent `json:"-"`
+	// --scrape fields, filled from Page before encoding.
+	Content     string `json:"content,omitempty"`
+	ScrapeError string `json:"scrape_error,omitempty"`
+}
+
+func (r *rawResult) fillPage() {
+	if r.Page == nil {
+		return
+	}
+	r.Content = r.Page.Content
+	if r.Page.Err != nil {
+		r.ScrapeError = r.Page.Err.Error()
+	}
 }
 
 func toRaw(results []provider.SearchResult, engines map[string][]string) []rawResult {
@@ -481,6 +608,9 @@ func toRaw(results []provider.SearchResult, engines map[string][]string) []rawRe
 
 // writeRaw prints unqualified provider results (--no-filter).
 func writeRaw(w io.Writer, results []rawResult, format outputFormat) error {
+	for i := range results {
+		results[i].fillPage()
+	}
 	switch format {
 	case formatJSON:
 		return writeJSON(w, results)
@@ -498,9 +628,31 @@ func writeRaw(w io.Writer, results []rawResult, format outputFormat) error {
 		if r.Snippet != "" {
 			fmt.Fprintf(w, "    %s\n", clipSnippet(r.Snippet, 240))
 		}
+		writeContent(w, r.Page)
 		fmt.Fprintln(w)
 	}
 	return nil
+}
+
+// writeContent prints scraped page text under a separator, indented to sit
+// inside the result block.
+func writeContent(w io.Writer, p *pageContent) {
+	if p == nil {
+		return
+	}
+	if p.Err != nil {
+		fmt.Fprintf(w, "    ! scrape failed: %v\n", p.Err)
+		return
+	}
+	fmt.Fprintf(w, "    --- content (%d chars) ---\n", len([]rune(p.Content)))
+	for _, line := range strings.Split(p.Content, "\n") {
+		if line == "" {
+			fmt.Fprintln(w)
+			continue
+		}
+		fmt.Fprintf(w, "    %s\n", line)
+	}
+	fmt.Fprintln(w, "    --- end ---")
 }
 
 // writeQualified prints ranked results. Non-verbose output includes only kept
@@ -565,6 +717,7 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 			}
 			fmt.Fprintf(w, "    %s\n", clipSnippet(r.Result.Snippet, limit))
 		}
+		writeContent(w, r.Page)
 		fmt.Fprintln(w)
 	}
 	return nil

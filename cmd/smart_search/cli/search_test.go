@@ -14,6 +14,7 @@ import (
 	"github.com/dorkitude/smart_search/internal/jev"
 	"github.com/dorkitude/smart_search/internal/keys"
 	"github.com/dorkitude/smart_search/internal/provider"
+	"github.com/dorkitude/smart_search/internal/scrape"
 )
 
 // fakeProvider records the search it was asked to run and returns canned results.
@@ -777,5 +778,106 @@ func TestSearchModeFlagConflicts(t *testing.T) {
 	}
 	if len(h.built) != 0 {
 		t.Error("conflicting flags should fail before any search")
+	}
+}
+
+// fakeScraper serves canned page text per URL and records what was fetched.
+type fakeScraper struct {
+	pages    map[string]string // URL → content
+	errs     map[string]error  // URL → error
+	gotURLs  []string
+	maxChars int
+}
+
+func (f *fakeScraper) FetchAll(_ context.Context, urls []string, _ int) []scrape.Page {
+	f.gotURLs = append(f.gotURLs, urls...)
+	out := make([]scrape.Page, len(urls))
+	for i, u := range urls {
+		out[i] = scrape.Page{URL: u, Content: f.pages[u], Err: f.errs[u]}
+	}
+	return out
+}
+
+func (h *harness) withScraper(pages map[string]string, errs map[string]error) *fakeScraper {
+	fs := &fakeScraper{pages: pages, errs: errs}
+	orig := newScraper
+	newScraper = func(maxChars int) scraper {
+		fs.maxChars = maxChars
+		return fs
+	}
+	h.t.Cleanup(func() { newScraper = orig })
+	return fs
+}
+
+func TestSearchScrape(t *testing.T) {
+	h := newHarness(t, allKeys())
+	fs := h.withScraper(
+		map[string]string{paper.URL: "Abstract\n\nWe propose the Transformer."},
+		map[string]error{wiki.URL: errors.New("HTTP 403")},
+	)
+	out, errOut, err := h.run("--scrape", "--json", "--verbose", "--max-chars", "1234", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only kept results are fetched (the blog is dropped by Jev).
+	if strings.Join(fs.gotURLs, ",") != paper.URL+","+wiki.URL {
+		t.Errorf("fetched %v", fs.gotURLs)
+	}
+	if fs.maxChars != 1234 {
+		t.Errorf("max chars = %d", fs.maxChars)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 3 || items[0].Content != "Abstract\n\nWe propose the Transformer." || items[0].ScrapeError != "" {
+		t.Errorf("paper = %+v", items[0])
+	}
+	if items[1].Content != "" || items[1].ScrapeError != "HTTP 403" {
+		t.Errorf("wiki = %+v", items[1])
+	}
+	if items[2].Content != "" || items[2].ScrapeError != "" {
+		t.Errorf("dropped blog should have no content: %+v", items[2])
+	}
+	if !strings.Contains(errOut, "scraped 2 page(s), 37 chars; 1 failed") {
+		t.Errorf("scrape summary missing: %q", errOut)
+	}
+
+	out, _, err = h.run("--scrape", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"    --- content (37 chars) ---\n    Abstract\n\n    We propose the Transformer.\n    --- end ---\n",
+		"    ! scrape failed: HTTP 403\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pretty output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSearchScrapeNoFilterAndURLsOnly(t *testing.T) {
+	h := newHarness(t, keys.Store{ExaAPIKey: "e"})
+	fs := h.withScraper(map[string]string{blog.URL: "b", paper.URL: "p", wiki.URL: "w"}, nil)
+	out, _, err := h.run("--scrape", "--no-filter", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := mustJSON[[]rawResult](t, out)
+	if len(raw) != 3 || raw[0].Content != "b" || raw[2].Content != "w" || len(fs.gotURLs) != 3 {
+		t.Errorf("raw = %+v, fetched %v", raw, fs.gotURLs)
+	}
+	if !strings.Contains(out, `"content": "b"`) {
+		t.Errorf("content field missing:\n%s", out)
+	}
+
+	fs.gotURLs = nil
+	if _, _, err := h.run("--scrape", "--no-filter", "--urls-only", "q"); err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.gotURLs) != 0 {
+		t.Error("--urls-only should not fetch pages")
+	}
+
+	if _, _, err := h.run("--scrape", "--max-chars", "0", "q"); err == nil || !strings.Contains(err.Error(), "--max-chars") {
+		t.Errorf("err = %v", err)
 	}
 }

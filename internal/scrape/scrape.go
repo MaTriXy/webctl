@@ -1,0 +1,237 @@
+// Package scrape fetches web pages and reduces them to plain text.
+package scrape
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/net/html"
+)
+
+// Defaults.
+const (
+	DefaultMaxChars    = 50000
+	DefaultTimeout     = 20 * time.Second
+	DefaultConcurrency = 4
+	maxBodyBytes       = 8 << 20
+	userAgent          = "Mozilla/5.0 (compatible; smart_search/1.0; +https://github.com/dorkitude/smart_search)"
+)
+
+// Fetcher downloads pages and extracts their text.
+type Fetcher struct {
+	// Client defaults to one with DefaultTimeout.
+	Client *http.Client
+	// MaxChars caps the extracted text per page (runes). ≤0 means DefaultMaxChars.
+	MaxChars int
+}
+
+// Page is the outcome of fetching one URL.
+type Page struct {
+	URL     string
+	Content string
+	Err     error
+}
+
+func (f *Fetcher) client() *http.Client {
+	if f.Client != nil {
+		return f.Client
+	}
+	return &http.Client{Timeout: DefaultTimeout}
+}
+
+func (f *Fetcher) maxChars() int {
+	if f.MaxChars <= 0 {
+		return DefaultMaxChars
+	}
+	return f.MaxChars
+}
+
+// Fetch downloads url and returns its text content, truncated to MaxChars.
+// HTML is converted to text; plain text is passed through; other content
+// types are rejected.
+func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
+
+	resp, err := f.client().Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", fmt.Errorf("timed out: %w", err)
+		}
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	body := io.LimitReader(resp.Body, maxBodyBytes)
+	var text string
+	switch {
+	case mediaType == "" || strings.Contains(mediaType, "html") || strings.Contains(mediaType, "xml"):
+		if text, err = HTMLToText(body); err != nil {
+			return "", err
+		}
+	case strings.HasPrefix(mediaType, "text/"), mediaType == "application/json":
+		raw, err := io.ReadAll(body)
+		if err != nil {
+			return "", fmt.Errorf("read body: %w", err)
+		}
+		text = normalizeText(string(raw))
+	default:
+		return "", fmt.Errorf("unsupported content type %q", mediaType)
+	}
+	if text == "" {
+		return "", errors.New("no text content")
+	}
+	return Truncate(text, f.maxChars()), nil
+}
+
+// FetchAll fetches every URL with bounded concurrency. The returned slice is
+// aligned with urls; per-URL failures are recorded in Page.Err.
+func (f *Fetcher) FetchAll(ctx context.Context, urls []string, concurrency int) []Page {
+	if concurrency <= 0 {
+		concurrency = DefaultConcurrency
+	}
+	pages := make([]Page, len(urls))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for i, u := range urls {
+		pages[i].URL = u
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, u string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			pages[i].Content, pages[i].Err = f.Fetch(ctx, u)
+		}(i, u)
+	}
+	wg.Wait()
+	return pages
+}
+
+// skipElements are dropped along with their contents.
+var skipElements = map[string]bool{
+	"script": true, "style": true, "noscript": true, "template": true, "head": true,
+	"svg": true, "iframe": true, "canvas": true, "object": true, "embed": true,
+}
+
+// blockElements start on a new line; "paragraph" ones also end a paragraph.
+var blockElements = map[string]bool{
+	"address": true, "article": true, "aside": true, "blockquote": true, "br": true,
+	"dd": true, "details": true, "dialog": true, "div": true, "dl": true, "dt": true,
+	"fieldset": true, "figcaption": true, "figure": true, "footer": true, "form": true,
+	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"header": true, "hr": true, "li": true, "main": true, "nav": true, "ol": true,
+	"p": true, "pre": true, "section": true, "table": true, "tbody": true, "td": true,
+	"tfoot": true, "th": true, "thead": true, "tr": true, "ul": true, "summary": true,
+}
+
+var paragraphElements = map[string]bool{
+	"article": true, "blockquote": true, "div": true, "figure": true, "footer": true,
+	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"header": true, "hr": true, "li": true, "main": true, "nav": true, "p": true,
+	"pre": true, "section": true, "table": true, "ul": true, "ol": true, "dl": true,
+}
+
+// HTMLToText strips tags, scripts, and styles, keeping block structure as
+// line and paragraph breaks.
+func HTMLToText(r io.Reader) (string, error) {
+	doc, err := html.Parse(r)
+	if err != nil {
+		return "", fmt.Errorf("parse HTML: %w", err)
+	}
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		switch n.Type {
+		case html.TextNode:
+			b.WriteString(n.Data)
+			return
+		case html.CommentNode, html.DoctypeNode:
+			return
+		case html.ElementNode:
+			if skipElements[n.Data] {
+				return
+			}
+			// Void elements have no children, so emit their break once.
+			switch n.Data {
+			case "br":
+				b.WriteString("\n")
+				return
+			case "hr":
+				b.WriteString("\n\n")
+				return
+			}
+			if blockElements[n.Data] {
+				if paragraphElements[n.Data] {
+					b.WriteString("\n\n")
+				} else {
+					b.WriteString("\n")
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+		if n.Type == html.ElementNode && blockElements[n.Data] {
+			if paragraphElements[n.Data] {
+				b.WriteString("\n\n")
+			} else {
+				b.WriteString("\n")
+			}
+		}
+	}
+	walk(doc)
+	return normalizeText(b.String()), nil
+}
+
+var (
+	multiSpace   = regexp.MustCompile(`[ \t\r\f\v\x{00A0}]+`)
+	spaceAroundN = regexp.MustCompile(` *\n *`)
+	multiNewline = regexp.MustCompile(`\n{3,}`)
+)
+
+// normalizeText collapses runs of spaces, trims line edges, and limits blank
+// runs to a single empty line so paragraphs stay distinguishable.
+func normalizeText(s string) string {
+	s = multiSpace.ReplaceAllString(s, " ")
+	s = spaceAroundN.ReplaceAllString(s, "\n")
+	s = multiNewline.ReplaceAllString(s, "\n\n")
+	return strings.TrimSpace(s)
+}
+
+// Truncate cuts s to at most max runes, preferring a paragraph or line
+// boundary in the final quarter of the budget and appending an ellipsis.
+func Truncate(s string, max int) string {
+	if max <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	cut := string(r[:max])
+	floor := max * 3 / 4
+	if i := strings.LastIndex(cut, "\n\n"); i >= floor {
+		cut = cut[:i]
+	} else if i := strings.LastIndex(cut, "\n"); i >= floor {
+		cut = cut[:i]
+	} else if i := strings.LastIndex(cut, " "); i >= floor {
+		cut = cut[:i]
+	}
+	return strings.TrimSpace(cut) + "…"
+}
