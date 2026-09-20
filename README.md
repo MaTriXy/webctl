@@ -2,6 +2,16 @@
 
 Smart web search CLI for agents, backed by [Jev](https://typesafe.ai). Saves a lot of tokens.
 
+```bash
+webctl "What was the score of last night's Giants game?"
+```
+
+By default, webctl will try 3 web search backends.  Each result set is passed (with the original query context) to Jev for scoring;  the high-scoring subset is then deduped deterministically, then passed through a Jev judge.  This means your Claude (or whatever) doesn't have to read as much junk, which saves you $$ (sorry, Anthropic!).
+
+Optionally, webctl can also scrape the result pages so your agent doesn't have to fetch them.  It then parses out the textual content, divides it into chunks, and sends batches of those chunks (plus the original query context) to Jev for scoring.  High-scoring results are returned.  For some workloads (think long PDFs, long Reddit comment threads, etc), this can save an *enormous* number of tokens.
+
+It's MIT-licensed and free to you.  Feel free to submit a PR if I missed something!  And if I miss the PR, hit me up [@dorkitude](https://x.com/dorkitude) and I'll get to it ASAP.
+
 - [Quick start](#quick-start)
 - [Installation](#installation)
 - [Schematics](#schematics)
@@ -18,7 +28,9 @@ webctl setup        # asks for your Jev key
 webctl "latest advances in mechanistic interpretability"
 ```
 
-That is the whole setup. Search itself needs no keys: it uses the keyless Exa, Parallel, and You.com endpoints, with DuckDuckGo as a fallback. Search API keys and a local SearXNG are optional extras ([docs/config.md](docs/config.md)).
+Searching does not require keys for hobbyist-level usage on several platforms, which webctl intelligently picks from.
+
+It uses the keyless Exa, Parallel, and You.com endpoints, with DuckDuckGo as a fallback.  webctl also respects rate limits with exponential cooldowns.  If you're hitting a lot of rate limits, consider paying for a search service and configuring it. ([docs/config.md](docs/config.md)).
 
 ## Installation
 
