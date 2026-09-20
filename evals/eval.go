@@ -233,6 +233,9 @@ type Runner struct {
 	// SearchCache, when set, serves and records provider results so that
 	// repeated runs judge identical inputs and spare the search tiers.
 	SearchCache SearchCache
+	// Fresh searches even when the cache has an entry, and records the
+	// new results.
+	Fresh bool
 }
 
 // SearchCache stores provider results per (query, num).
@@ -406,7 +409,7 @@ func (r *Runner) Run(ctx context.Context, c Case) *Report {
 	}
 	var results []provider.SearchResult
 	cached := false
-	if r.SearchCache != nil {
+	if r.SearchCache != nil && !r.Fresh {
 		var prov string
 		var err error
 		if results, prov, cached, err = r.SearchCache.CachedSearch(ctx, c.Query, num, SearchCacheMaxAge); err != nil {

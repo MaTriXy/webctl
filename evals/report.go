@@ -32,6 +32,39 @@ func WriteModeTable(w io.Writer, sums []ModeSummary, markdown bool) {
 	writeTable(w, header, rows, markdown)
 }
 
+// WriteCompareTable prints one row per case: what the raw results would
+// deliver next to what the filter delivered.
+func WriteCompareTable(w io.Writer, rows []CaseRow, markdown bool) {
+	header := []string{"case", "tags", "raw results", "kept", "raw chars", "kept chars", "junk raw→kept", "flagged raw→kept", "expected-domain raw→kept", "themes raw", "themes kept", "filter ms", "pass"}
+	byCase := map[string]map[Mode]CaseRow{}
+	var order []string
+	for _, r := range rows {
+		if r.Mode == "" {
+			continue
+		}
+		if _, ok := byCase[r.Case]; !ok {
+			byCase[r.Case] = map[Mode]CaseRow{}
+			order = append(order, r.Case)
+		}
+		byCase[r.Case][r.Mode] = r
+	}
+	var out [][]string
+	for _, name := range order {
+		raw, filt := byCase[name][ModeNoFilter], byCase[name][ModeFilter]
+		pass := "✓"
+		if !filt.Passed {
+			pass = "✗"
+		}
+		out = append(out, []string{
+			name, raw.Tags, fmt.Sprint(raw.Results), fmt.Sprint(filt.Results), fmt.Sprint(raw.Chars), fmt.Sprint(filt.Chars),
+			fmt.Sprintf("%d→%d", raw.Junk, filt.Junk), fmt.Sprintf("%d→%d", raw.Flagged, filt.Flagged), fmt.Sprintf("%d→%d", raw.ExpectedHits, filt.ExpectedHits),
+			fmt.Sprintf("%d/%d", raw.ThemesCovered, raw.ThemesTotal), fmt.Sprintf("%d/%d", filt.ThemesCovered, filt.ThemesTotal),
+			fmt.Sprint(filt.DurationMs), pass,
+		})
+	}
+	writeTable(w, header, out, markdown)
+}
+
 // WriteCaseTable prints one row per stored stage row.
 func WriteCaseTable(w io.Writer, rows []CaseRow, markdown bool) {
 	header := []string{"case", "tags", "mode", "pass", "results", "chars", "junk", "flagged", "exp-hits", "themes", "pages ok/failed", "chunks kept/total", "ms", "note"}

@@ -134,9 +134,8 @@ Cases are YAML files embedded from evals/cases/, or a directory given with
 				if err != nil {
 					return err
 				}
-				if !fresh {
-					runner.SearchCache = db
-				}
+				runner.SearchCache = db
+				runner.Fresh = fresh
 			}
 
 			if !jsonOut {
@@ -216,6 +215,7 @@ func newEvalReportCmd() *cobra.Command {
 		dbPath   string
 		version  string
 		perCase  bool
+		compare  bool
 		markdown bool
 	)
 	cmd := &cobra.Command{
@@ -251,13 +251,19 @@ func newEvalReportCmd() *cobra.Command {
 				}
 				fmt.Fprintf(out, "\n## Version %s (run %d)\n\n", v, runID)
 				evals.WriteModeTable(out, sums, markdown)
-				if perCase {
+				if perCase || compare {
 					rows, err := db.RunRows(ctx, runID)
 					if err != nil {
 						return err
 					}
-					fmt.Fprintln(out)
-					evals.WriteCaseTable(out, rows, markdown)
+					if compare {
+						fmt.Fprintln(out)
+						evals.WriteCompareTable(out, rows, markdown)
+					}
+					if perCase {
+						fmt.Fprintln(out)
+						evals.WriteCaseTable(out, rows, markdown)
+					}
 				}
 			}
 			return nil
@@ -266,7 +272,8 @@ func newEvalReportCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&dbPath, "db", defaultEvalDB, "SQLite file to read")
 	f.StringVar(&version, "version", "", "only this version (default: every version, latest run each)")
-	f.BoolVar(&perCase, "cases", false, "include a per-case table")
+	f.BoolVar(&perCase, "cases", false, "include a per-case, per-stage table")
+	f.BoolVar(&compare, "compare", false, "include a per-case table comparing raw results with the filter's delivery")
 	f.BoolVar(&markdown, "markdown", true, "emit Markdown tables")
 	return cmd
 }
