@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,11 +20,20 @@ import (
 // jevServer is a mock System One endpoint. handler receives the decoded
 // request and returns the response payload (or an HTTP status to fail with).
 type jevServer struct {
-	srv      *httptest.Server
-	calls    atomic.Int32
+	srv     *httptest.Server
+	calls   atomic.Int32
+	handler func(req SystemOneRequest) (status int, body any)
+
+	mu       sync.Mutex // guards lastReq/lastAuth (handlers run concurrently)
 	lastReq  SystemOneRequest
 	lastAuth string
-	handler  func(req SystemOneRequest) (status int, body any)
+}
+
+// last returns the most recent request and auth header.
+func (js *jevServer) last() (SystemOneRequest, string) {
+	js.mu.Lock()
+	defer js.mu.Unlock()
+	return js.lastReq, js.lastAuth
 }
 
 func newJevServer(t *testing.T, handler func(req SystemOneRequest) (int, any)) *jevServer {
@@ -34,13 +44,15 @@ func newJevServer(t *testing.T, handler func(req SystemOneRequest) (int, any)) *
 		if r.URL.Path != systemOnePath || r.Method != http.MethodPost {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		js.lastAuth = r.Header.Get("Authorization")
 		raw, _ := io.ReadAll(r.Body)
 		var req SystemOneRequest
 		if err := json.Unmarshal(raw, &req); err != nil {
 			t.Errorf("bad request JSON: %v\n%s", err, raw)
 		}
+		js.mu.Lock()
+		js.lastAuth = r.Header.Get("Authorization")
 		js.lastReq = req
+		js.mu.Unlock()
 		status, body := handler(req)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
