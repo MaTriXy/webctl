@@ -132,7 +132,7 @@ func TestLoadFSAndListFS(t *testing.T) {
 
 func TestEmbeddedPrompts(t *testing.T) {
 	names := List()
-	want := []string{RelevanceBatch, RelevanceNoul, RelevanceScore, ThemeCoverage}
+	want := []string{ChunkRelevance, RelevanceBatch, RelevanceNoul, RelevanceScore, ThemeCoverage}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("List = %v, want %v", names, want)
 	}
@@ -149,13 +149,16 @@ func TestEmbeddedPrompts(t *testing.T) {
 			t.Errorf("%s: model/description should be set", name)
 		}
 		// Every shipped prompt must render cleanly with full Data.
-		out, err := p.Render(Data{Query: "Q", Title: "T", URL: "U", Snippet: "S", Question: "?", Theme: "TH", ID: "result_0", Index: 0})
+		out, err := p.Render(Data{Query: "Q", Title: "T", URL: "U", Snippet: "S", Question: "?", Theme: "TH", Chunk: "CHUNK", ID: "result_0", Index: 0})
 		if err != nil {
 			t.Errorf("%s: render: %v", name, err)
 		}
 		needles := []string{"Q", "T", "U", "S"}
-		if name == ThemeCoverage {
+		switch name {
+		case ThemeCoverage:
 			needles = []string{"Q", "TH", "result_0"}
+		case ChunkRelevance:
+			needles = []string{"Q", "CHUNK", "result_0"}
 		}
 		for _, needle := range needles {
 			if !strings.Contains(out, needle) {

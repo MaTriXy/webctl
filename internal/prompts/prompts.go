@@ -25,6 +25,7 @@ const (
 	RelevanceNoul  = "relevance-noul"
 	RelevanceBatch = "relevance-batch"
 	ThemeCoverage  = "theme-coverage"
+	ChunkRelevance = "chunk-relevance"
 )
 
 // Prompt is a parsed OKF prompt file.
@@ -51,6 +52,7 @@ type Data struct {
 	Snippet  string
 	Question string // for noul prompts
 	Theme    string // for eval coverage prompts
+	Chunk    string // for page chunk prompts
 	ID       string // for batch prompts
 	Index    int    // zero-based position in a batch
 }

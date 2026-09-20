@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dorkitude/smart_search/internal/config"
@@ -43,6 +44,38 @@ type fakeQualifier struct {
 	gotQuery string
 	gotOpts  jev.QualifyOptions
 	calls    int
+
+	// Chunk filtering: chunks containing a relevantWord are "yes"; a chunk
+	// containing unansweredWord gets no answer; chunkErr fails the request.
+	relevantWord   string
+	unansweredWord string
+	chunkErr       error
+	mu             sync.Mutex
+	chunkCalls     int
+	gotChunks      [][]string
+}
+
+func (f *fakeQualifier) FilterChunks(_ context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.chunkCalls++
+	f.gotChunks = append(f.gotChunks, chunks)
+	if f.chunkErr != nil {
+		return nil, jev.Usage{}, f.chunkErr
+	}
+	out := make([]*jev.NoulAnswer, len(chunks))
+	for i, c := range chunks {
+		lc := strings.ToLower(c)
+		if f.unansweredWord != "" && strings.Contains(lc, strings.ToLower(f.unansweredWord)) {
+			continue
+		}
+		p := 0.1
+		if f.relevantWord != "" && strings.Contains(lc, strings.ToLower(f.relevantWord)) {
+			p = 0.9
+		}
+		out[i] = &jev.NoulAnswer{Probability: p}
+	}
+	return out, jev.Usage{}, nil
 }
 
 func (f *fakeQualifier) Qualify(_ context.Context, query string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error) {
@@ -836,7 +869,7 @@ func TestSearchScrape(t *testing.T) {
 	if items[2].Content != "" || items[2].ScrapeError != "" {
 		t.Errorf("dropped blog should have no content: %+v", items[2])
 	}
-	if !strings.Contains(errOut, "scraped 2 page(s), 37 chars; 1 failed") {
+	if !strings.Contains(errOut, "scraped 2 page(s) (1 failed), 37 chars") {
 		t.Errorf("scrape summary missing: %q", errOut)
 	}
 
@@ -878,6 +911,131 @@ func TestSearchScrapeNoFilterAndURLsOnly(t *testing.T) {
 	}
 
 	if _, _, err := h.run("--scrape", "--max-chars", "0", "q"); err == nil || !strings.Contains(err.Error(), "--max-chars") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// Three ~1500-char paragraphs: each becomes its own 2000-char chunk.
+var (
+	chunkA  = strings.TrimSpace(strings.Repeat("Attention lets the model weigh tokens. ", 38))
+	chunkB  = strings.TrimSpace(strings.Repeat("Subscribe to our newsletter and accept cookies. ", 31))
+	chunkC  = strings.TrimSpace(strings.Repeat("Multi-head attention runs several heads. ", 36))
+	bigPage = chunkA + "\n\n" + chunkB + "\n\n" + chunkC
+)
+
+func TestSearchFilterChunks(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.relevantWord = "attention"
+	h.withScraper(map[string]string{paper.URL: bigPage, wiki.URL: "Short page about attention."}, nil)
+
+	out, errOut, err := h.run("--scrape", "--filter-chunks", "--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.qual.chunkCalls != 2 {
+		t.Errorf("expected one batch request per page, got %d", h.qual.chunkCalls)
+	}
+	for _, chunks := range h.qual.gotChunks {
+		for _, c := range chunks {
+			if len([]rune(c)) > scrape.DefaultChunkChars {
+				t.Errorf("chunk of %d runes exceeds %d", len([]rune(c)), scrape.DefaultChunkChars)
+			}
+		}
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 3 || items[0].URL != paper.URL {
+		t.Fatalf("items = %+v", items)
+	}
+	p := items[0]
+	if p.ChunksTotal == nil || *p.ChunksTotal != 3 || p.ChunksKept == nil || *p.ChunksKept != 2 {
+		t.Errorf("paper chunk stats = %v/%v", p.ChunksKept, p.ChunksTotal)
+	}
+	if p.Content != chunkA+"\n\n"+chunkC {
+		t.Errorf("paper content = %q", p.Content)
+	}
+	w := items[1]
+	if w.ChunksTotal == nil || *w.ChunksTotal != 1 || *w.ChunksKept != 1 || w.Content != "Short page about attention." {
+		t.Errorf("wiki = %+v", w)
+	}
+	if items[2].ChunksTotal != nil || items[2].Content != "" {
+		t.Errorf("dropped result should not be scraped: %+v", items[2])
+	}
+	if !strings.Contains(errOut, "scraped 2 page(s); chunks 4 → 3 kept; ") || !strings.Contains(errOut, " chars\n") {
+		t.Errorf("summary = %q", errOut)
+	}
+
+	out, _, err = h.run("--scrape", "--filter-chunks", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "    --- content (2/3 chunks kept, ") || !strings.Contains(out, "    --- end ---") {
+		t.Errorf("pretty separator missing:\n%s", out)
+	}
+	if strings.Contains(out, "newsletter") {
+		t.Errorf("dropped chunk leaked into pretty output")
+	}
+}
+
+func TestSearchFilterChunksWithNoFilter(t *testing.T) {
+	// --no-filter skips result qualification but chunk filtering still needs Jev.
+	h := newHarness(t, keys.Store{ExaAPIKey: "e"})
+	h.withScraper(map[string]string{paper.URL: bigPage}, nil)
+	_, _, err := h.run("--scrape", "--filter-chunks", "--no-filter", "q")
+	if err == nil || !strings.Contains(err.Error(), "no Jev API key") {
+		t.Errorf("err = %v", err)
+	}
+	if h.prov.gotQuery != "" {
+		t.Error("should fail before searching")
+	}
+
+	h = newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h.qual.relevantWord = "attention"
+	h.qual.unansweredWord = "Multi-head"
+	h.prov.results = []provider.SearchResult{paper}
+	h.withScraper(map[string]string{paper.URL: bigPage}, nil)
+	out, _, err := h.run("--scrape", "--filter-chunks", "--no-filter", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.qual.calls != 0 || h.qual.chunkCalls != 1 {
+		t.Errorf("qualify calls = %d, chunk calls = %d", h.qual.calls, h.qual.chunkCalls)
+	}
+	raw := mustJSON[[]rawResult](t, out)
+	// Unanswered chunk (C) is dropped along with the irrelevant one (B).
+	if len(raw) != 1 || raw[0].Content != chunkA || *raw[0].ChunksTotal != 3 || *raw[0].ChunksKept != 1 {
+		t.Errorf("raw = %+v", raw)
+	}
+}
+
+func TestSearchFilterChunksJevErrorKeepsContent(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.chunkErr = errors.New("jev down")
+	h.prov.results = []provider.SearchResult{paper}
+	h.withScraper(map[string]string{paper.URL: bigPage}, nil)
+	out, errOut, err := h.run("--scrape", "--filter-chunks", "--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 1 || items[0].Content != bigPage || items[0].FilterError != "jev down" || *items[0].ChunksKept != 3 {
+		t.Errorf("items = %+v", items)
+	}
+	if !strings.Contains(errOut, "1 page(s) unfiltered (Jev error)") {
+		t.Errorf("summary = %q", errOut)
+	}
+	out, _, err = h.run("--scrape", "--filter-chunks", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "! chunk filter failed: jev down (showing unfiltered content)") {
+		t.Errorf("pretty output:\n%s", out)
+	}
+}
+
+func TestSearchFilterChunksRequiresScrape(t *testing.T) {
+	h := newHarness(t, allKeys())
+	_, _, err := h.run("--filter-chunks", "q")
+	if err == nil || !strings.Contains(err.Error(), "--filter-chunks requires --scrape") {
 		t.Errorf("err = %v", err)
 	}
 }

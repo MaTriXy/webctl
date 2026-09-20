@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -35,6 +36,7 @@ type searchFlags struct {
 	random   bool
 	scrape   bool
 	maxChars int
+	chunks   bool
 }
 
 var sf searchFlags
@@ -55,12 +57,14 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.random, "random", false, "query one random usable backend, falling back to the others on failure")
 	f.BoolVar(&sf.scrape, "scrape", false, "fetch each kept result's page and include its text content")
 	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap the content kept per page")
+	f.BoolVar(&sf.chunks, "filter-chunks", false, "with --scrape, keep only the page chunks Jev judges relevant to the query (one batch Jev request per page)")
 }
 
 // qualifier is the slice of *jev.Client the search pipeline depends on.
 // It exists so tests can substitute a fake without an HTTP server.
 type qualifier interface {
 	Qualify(ctx context.Context, query string, results []provider.SearchResult, opts jev.QualifyOptions) ([]jev.Qualified, jev.Usage, error)
+	FilterChunks(ctx context.Context, query string, chunks []string) ([]*jev.NoulAnswer, jev.Usage, error)
 }
 
 // scraper is the slice of *scrape.Fetcher the pipeline depends on.
@@ -110,6 +114,8 @@ type searchOptions struct {
 	// Scrape fetches page content for kept results; MaxChars caps it per page.
 	Scrape   bool
 	MaxChars int
+	// FilterChunks keeps only the scraped chunks Jev judges relevant.
+	FilterChunks bool
 }
 
 type outputFormat int
@@ -162,17 +168,21 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	if f.scrape && f.maxChars <= 0 {
 		return searchOptions{}, fmt.Errorf("--max-chars must be positive, got %d", f.maxChars)
 	}
+	if f.chunks && !f.scrape {
+		return searchOptions{}, errors.New("--filter-chunks requires --scrape")
+	}
 
 	opts := searchOptions{
-		Query:    query,
-		Num:      cfg.Num,
-		MinScore: cfg.MinScore,
-		NoFilter: f.noFilter,
-		Batch:    f.batch,
-		Verbose:  f.verbose,
-		Noul:     strings.TrimSpace(f.noul),
-		Scrape:   f.scrape,
-		MaxChars: f.maxChars,
+		Query:        query,
+		Num:          cfg.Num,
+		MinScore:     cfg.MinScore,
+		NoFilter:     f.noFilter,
+		Batch:        f.batch,
+		Verbose:      f.verbose,
+		Noul:         strings.TrimSpace(f.noul),
+		Scrape:       f.scrape,
+		MaxChars:     f.maxChars,
+		FilterChunks: f.chunks,
 	}
 	if f.num > 0 {
 		opts.Num = f.num
@@ -244,11 +254,16 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 	// Resolve the Jev key before searching so a missing key fails fast
 	// instead of after a paid provider call.
 	var jevKey string
-	if !opts.NoFilter {
+	if !opts.NoFilter || opts.FilterChunks {
 		var err error
 		if jevKey, err = cfg.JevKey(); err != nil {
 			return err
 		}
+	}
+	// chunkFilter is non-nil only when --filter-chunks needs Jev.
+	var chunkFilter qualifier
+	if opts.FilterChunks {
+		chunkFilter = newQualifier(cfg, jevKey)
 	}
 
 	label, results, engines, err := runSearchStage(ctx, cfg, opts, errOut)
@@ -266,7 +281,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 			for i, r := range raw {
 				urls[i] = r.URL
 			}
-			pages := scrapePages(ctx, opts, urls)
+			pages := scrapePages(ctx, opts, chunkFilter, urls)
 			for i := range raw {
 				raw[i].Page = &pages[i]
 			}
@@ -309,7 +324,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 				urls = append(urls, r.Result.URL)
 			}
 		}
-		pages := scrapePages(ctx, opts, urls)
+		pages := scrapePages(ctx, opts, chunkFilter, urls)
 		for j, i := range idx {
 			ranked[i].Page = &pages[j]
 		}
@@ -324,10 +339,20 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 type pageContent struct {
 	Content string
 	Err     error
+	// Filtered is set when --filter-chunks ran on this page. FilterErr
+	// records a Jev failure, in which case Content is the unfiltered text.
+	Filtered    bool
+	FilterErr   error
+	ChunksTotal int
+	ChunksKept  int
+	// RawChars is the content length before chunk filtering.
+	RawChars int
 }
 
-// scrapePages fetches every URL (aligned with urls) and caps each page's text.
-func scrapePages(ctx context.Context, opts searchOptions, urls []string) []pageContent {
+// scrapePages fetches every URL (aligned with urls), caps each page's text,
+// and, when q is non-nil, keeps only the chunks Jev judges relevant. Each
+// page's chunks go to Jev in a single batch request; pages run concurrently.
+func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls []string) []pageContent {
 	out := make([]pageContent, len(urls))
 	if len(urls) == 0 {
 		return out
@@ -338,24 +363,80 @@ func scrapePages(ctx context.Context, opts searchOptions, urls []string) []pageC
 		if p.Err != nil {
 			out[i].Content = ""
 		}
+		out[i].RawChars = len([]rune(out[i].Content))
 	}
+	if q == nil {
+		return out
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, jev.DefaultConcurrency)
+	for i := range out {
+		if out[i].Err != nil || out[i].Content == "" {
+			continue
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(pc *pageContent) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			filterChunks(ctx, q, opts.Query, pc)
+		}(&out[i])
+	}
+	wg.Wait()
 	return out
+}
+
+// filterChunks splits pc.Content, asks Jev about every chunk in one request,
+// and reassembles the ones it says yes to.
+func filterChunks(ctx context.Context, q qualifier, query string, pc *pageContent) {
+	chunks := scrape.Split(pc.Content, scrape.DefaultChunkChars)
+	pc.Filtered = true
+	pc.ChunksTotal = len(chunks)
+	answers, _, err := q.FilterChunks(ctx, query, chunks)
+	if err != nil {
+		pc.FilterErr = err
+		pc.ChunksKept = len(chunks)
+		return
+	}
+	kept := make([]string, 0, len(chunks))
+	for i, c := range chunks {
+		if i < len(answers) && answers[i] != nil && answers[i].Yes() {
+			kept = append(kept, c)
+		}
+	}
+	pc.ChunksKept = len(kept)
+	pc.Content = scrape.Join(kept)
 }
 
 func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 	if opts.Format != formatPretty && !opts.Verbose {
 		return
 	}
-	var failed, chars int
+	var failed, rawChars, chars, total, kept, filterFailed int
 	for _, p := range pages {
 		if p.Err != nil {
 			failed++
 		}
+		rawChars += p.RawChars
 		chars += len([]rune(p.Content))
+		total += p.ChunksTotal
+		kept += p.ChunksKept
+		if p.FilterErr != nil {
+			filterFailed++
+		}
 	}
-	fmt.Fprintf(w, "scraped %d page(s), %d chars", len(pages), chars)
+	fmt.Fprintf(w, "scraped %d page(s)", len(pages))
 	if failed > 0 {
-		fmt.Fprintf(w, "; %d failed", failed)
+		fmt.Fprintf(w, " (%d failed)", failed)
+	}
+	if opts.FilterChunks {
+		fmt.Fprintf(w, "; chunks %d → %d kept; %d → %d chars", total, kept, rawChars, chars)
+		if filterFailed > 0 {
+			fmt.Fprintf(w, "; %d page(s) unfiltered (Jev error)", filterFailed)
+		}
+	} else {
+		fmt.Fprintf(w, ", %d chars", chars)
 	}
 	fmt.Fprintln(w)
 	if opts.Format == formatPretty {
@@ -540,6 +621,10 @@ type outputResult struct {
 	// --scrape fields.
 	Content     string `json:"content,omitempty"`
 	ScrapeError string `json:"scrape_error,omitempty"`
+	// --filter-chunks fields.
+	ChunksTotal *int   `json:"chunks_total,omitempty"`
+	ChunksKept  *int   `json:"chunks_kept,omitempty"`
+	FilterError string `json:"filter_error,omitempty"`
 }
 
 // fillPage copies scraped content into the JSON fields.
@@ -547,10 +632,23 @@ func (o *outputResult) fillPage(p *pageContent) {
 	if p == nil {
 		return
 	}
-	o.Content = p.Content
+	o.Content, o.ScrapeError, o.ChunksTotal, o.ChunksKept, o.FilterError = pageFields(p)
+}
+
+// pageFields flattens a pageContent into the shared JSON field values.
+func pageFields(p *pageContent) (content, scrapeErr string, total, kept *int, filterErr string) {
+	content = p.Content
 	if p.Err != nil {
-		o.ScrapeError = p.Err.Error()
+		scrapeErr = p.Err.Error()
 	}
+	if p.Filtered {
+		t, k := p.ChunksTotal, p.ChunksKept
+		total, kept = &t, &k
+	}
+	if p.FilterErr != nil {
+		filterErr = p.FilterErr.Error()
+	}
+	return content, scrapeErr, total, kept, filterErr
 }
 
 func toOutput(r rankedResult) outputResult {
@@ -583,19 +681,19 @@ type rawResult struct {
 	Engines []string `json:"engines,omitempty"`
 
 	Page *pageContent `json:"-"`
-	// --scrape fields, filled from Page before encoding.
+	// --scrape / --filter-chunks fields, filled from Page before encoding.
 	Content     string `json:"content,omitempty"`
 	ScrapeError string `json:"scrape_error,omitempty"`
+	ChunksTotal *int   `json:"chunks_total,omitempty"`
+	ChunksKept  *int   `json:"chunks_kept,omitempty"`
+	FilterError string `json:"filter_error,omitempty"`
 }
 
 func (r *rawResult) fillPage() {
 	if r.Page == nil {
 		return
 	}
-	r.Content = r.Page.Content
-	if r.Page.Err != nil {
-		r.ScrapeError = r.Page.Err.Error()
-	}
+	r.Content, r.ScrapeError, r.ChunksTotal, r.ChunksKept, r.FilterError = pageFields(r.Page)
 }
 
 func toRaw(results []provider.SearchResult, engines map[string][]string) []rawResult {
@@ -644,7 +742,18 @@ func writeContent(w io.Writer, p *pageContent) {
 		fmt.Fprintf(w, "    ! scrape failed: %v\n", p.Err)
 		return
 	}
-	fmt.Fprintf(w, "    --- content (%d chars) ---\n", len([]rune(p.Content)))
+	if p.FilterErr != nil {
+		fmt.Fprintf(w, "    ! chunk filter failed: %v (showing unfiltered content)\n", p.FilterErr)
+	}
+	switch {
+	case p.Filtered && p.FilterErr == nil:
+		fmt.Fprintf(w, "    --- content (%d/%d chunks kept, %d chars) ---\n", p.ChunksKept, p.ChunksTotal, len([]rune(p.Content)))
+	default:
+		fmt.Fprintf(w, "    --- content (%d chars) ---\n", len([]rune(p.Content)))
+	}
+	if p.Content == "" {
+		fmt.Fprintln(w, "    (no relevant chunks)")
+	}
 	for _, line := range strings.Split(p.Content, "\n") {
 		if line == "" {
 			fmt.Fprintln(w)
