@@ -1,10 +1,10 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,8 +25,14 @@ var newEvalJev = func(cfg *config.Config, key string) evals.JevClient {
 	return c
 }
 
-// defaultEvalDB is where eval runs are stored unless --db says otherwise.
-const defaultEvalDB = "evals/results.db"
+// runsDir is where eval runs are written: <config dir>/evals unless
+// --runs-dir says otherwise. Test output lives outside the repository.
+func runsDir(cfg *config.Config, flag string) string {
+	if flag != "" {
+		return flag
+	}
+	return filepath.Join(cfg.Dir, "evals")
+}
 
 func newEvalCmd() *cobra.Command {
 	var (
@@ -39,17 +45,19 @@ func newEvalCmd() *cobra.Command {
 		threshold float64
 		modesFlag string
 		parallel  int
-		dbPath    string
+		dir       string
 		notes     string
-		fresh     bool
+		reuse     string
+		noSave    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "eval [case-name ...]",
 		Short: "Run search-quality evals (live provider + Jev calls)",
 		Long: `Runs each case through search, then the nofilter, filter, and scrape stages,
-stores every stage in a SQLite database keyed by version, and passes a case
-when its filter stage passes. Provider results are cached for 24h (--fresh
-to search again). See "docs evals" and evals/README.md.`,
+and passes a case when its filter stage passes. Each run is saved as one JSON
+file under <config dir>/evals (--runs-dir). --reuse-searches <run> judges an
+earlier run's provider results again, so two runs compare like for like.
+See "docs evals" and evals/README.md.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cases, err := evals.EmbeddedCases()
@@ -92,6 +100,7 @@ to search again). See "docs evals" and evals/README.md.`,
 			if prov != "" {
 				defaultProvider = chain[0]
 			}
+			where := runsDir(cfg, dir)
 
 			runner := &evals.Runner{
 				Jev:               newEvalJev(cfg, jevKey),
@@ -110,40 +119,34 @@ to search again). See "docs evals" and evals/README.md.`,
 					return newProvider(cfg, name)
 				},
 			}
-
-			ctx := cmd.Context()
-			var db *evals.DB
-			var runID int64
-			if dbPath != "" {
-				if db, err = evals.OpenDB(dbPath); err != nil {
-					return err
-				}
-				defer db.Close()
-				runID, err = db.StartRun(ctx, evals.RunInfo{Version: version_.Version, GitSHA: gitSHA(), Provider: defaultProvider, Modes: modes, Notes: notes})
+			if reuse != "" {
+				prev, err := evals.ResolveRun(where, reuse)
 				if err != nil {
 					return err
 				}
-				runner.SearchCache = db
-				runner.Fresh = fresh
+				runner.ReuseSearches = prev.RawSearches()
+				defaultProvider = "reused from " + prev.ID
 			}
 
+			run := evals.NewRun(version_.Version, gitSHA(), defaultProvider, modes, notes)
 			if !jsonOut {
 				fmt.Fprintf(out, "=== multi_search_web %s eval: %d case(s), provider %s, modes %s, parallel %d ===\n\n", version_.Version, len(cases), defaultProvider, modesFlag, parallel)
 			}
-			progress := func(r *evals.Report) {
-				if !jsonOut {
-					evals.WriteReport(out, r, verbose)
-				}
-				if db != nil {
-					if err := db.RecordReport(ctx, runID, r); err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "db: %v\n", err)
-					}
+			var progress func(*evals.Report)
+			if !jsonOut {
+				progress = func(r *evals.Report) { evals.WriteReport(out, r, verbose) }
+			}
+			run.Reports = runner.RunAll(cmd.Context(), cases, progress)
+			run.Summary = evals.Summarize(run.Reports)
+			run.FinishedAt = run.StartedAt.Add(0)
+			for _, r := range run.Reports {
+				if end := run.StartedAt.Add(r.Duration); end.After(run.FinishedAt) {
+					run.FinishedAt = end
 				}
 			}
-			reports := runner.RunAll(ctx, cases, progress)
-			summary := evals.Summarize(reports)
-			if db != nil {
-				if err := db.FinishRun(ctx, runID, summary); err != nil {
+			saved := ""
+			if !noSave {
+				if saved, err = run.Save(where); err != nil {
 					return err
 				}
 			}
@@ -152,40 +155,36 @@ to search again). See "docs evals" and evals/README.md.`,
 				enc := json.NewEncoder(out)
 				enc.SetIndent("", "  ")
 				enc.SetEscapeHTML(false)
-				if err := enc.Encode(struct {
-					Version string          `json:"version"`
-					RunID   int64           `json:"run_id,omitempty"`
-					Reports []*evals.Report `json:"reports"`
-					Summary evals.Summary   `json:"summary"`
-				}{version_.Version, runID, reports, summary}); err != nil {
+				if err := enc.Encode(run); err != nil {
 					return err
 				}
 			} else {
-				evals.WriteSummary(out, summary)
-				if db != nil {
-					fmt.Fprintf(out, "stored as run %d in %s\n", runID, dbPath)
+				evals.WriteSummary(out, run.Summary)
+				if saved != "" {
+					fmt.Fprintf(out, "saved %s\n", saved)
 				}
 			}
 
-			if summary.Passed != summary.Total {
-				return fmt.Errorf("%d of %d eval case(s) did not pass", summary.Total-summary.Passed, summary.Total)
+			if run.Summary.Passed != run.Summary.Total {
+				return fmt.Errorf("%d of %d eval case(s) did not pass", run.Summary.Total-run.Summary.Passed, run.Summary.Total)
 			}
 			return nil
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&casesDir, "cases", "", "directory of case YAML files (default: cases embedded from evals/cases)")
-	f.StringVarP(&prov, "provider", "p", "", "search provider for every case (overrides per-case provider)")
-	f.BoolVar(&batch, "batch", false, "force Jev batch mode for qualification")
-	f.BoolVar(&jsonOut, "json", false, "emit reports and summary as JSON")
-	f.BoolVarP(&verbose, "verbose", "v", false, "show kept URLs and Jev token usage per case")
-	f.BoolVar(&list, "list", false, "list cases and exit without running them")
-	f.Float64Var(&threshold, "coverage-threshold", evals.DefaultCoverageThreshold, "P(yes) needed to count a theme as covered")
-	f.StringVar(&modesFlag, "modes", "nofilter,filter,scrape", "comma-separated stages to run")
-	f.IntVar(&parallel, "parallel", 2, "cases to run concurrently (keyless search tiers throttle above this)")
-	f.StringVar(&dbPath, "db", defaultEvalDB, "SQLite file to store results in (empty to skip)")
-	f.StringVar(&notes, "notes", "", "free-text note stored on the run")
-	f.BoolVar(&fresh, "fresh", false, "ignore cached provider results (default: results under 24h old from the db are reused so runs judge identical inputs)")
+	f.StringVar(&casesDir, "cases", "", "directory of case YAML files (default: embedded evals/cases)")
+	f.StringVarP(&prov, "provider", "p", "", "one provider for every case (default: the auto chain)")
+	f.BoolVar(&batch, "batch", false, "score each case's results in one Jev request")
+	f.BoolVar(&jsonOut, "json", false, "print the run as JSON")
+	f.BoolVarP(&verbose, "verbose", "v", false, "show every judged score and token usage")
+	f.BoolVar(&list, "list", false, "list cases and exit")
+	f.Float64Var(&threshold, "coverage-threshold", evals.DefaultCoverageThreshold, "P(yes) for a theme to count as covered")
+	f.StringVar(&modesFlag, "modes", "nofilter,filter,scrape", "stages to run")
+	f.IntVar(&parallel, "parallel", 2, "cases to run concurrently")
+	f.StringVar(&dir, "runs-dir", "", "where runs are saved (default <config dir>/evals)")
+	f.StringVar(&notes, "notes", "", "note stored with the run")
+	f.StringVar(&reuse, "reuse-searches", "", "judge the provider results of this run again: an id, \"latest\", \"latest:<version>\", or a file")
+	f.BoolVar(&noSave, "no-save", false, "do not write a run file")
 	cmd.AddCommand(newEvalReportCmd())
 	return cmd
 }
@@ -201,68 +200,71 @@ func gitSHA() string {
 
 func newEvalReportCmd() *cobra.Command {
 	var (
-		dbPath   string
+		dir      string
 		version  string
+		runRef   string
 		perCase  bool
 		compare  bool
 		markdown bool
 	)
 	cmd := &cobra.Command{
 		Use:   "report",
-		Short: "Summarize stored eval runs per version and mode",
+		Short: "Summarize saved runs per version and mode",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := evals.OpenDB(dbPath)
+			cfg, err := loadConfig()
 			if err != nil {
 				return err
 			}
-			defer db.Close()
-			ctx := context.Background()
-			versions := []string{version}
-			if version == "" {
-				if versions, err = db.Versions(ctx); err != nil {
+			where := runsDir(cfg, dir)
+			runs, err := evals.LoadRuns(where)
+			if err != nil {
+				return err
+			}
+			if len(runs) == 0 {
+				return fmt.Errorf("no runs in %s", where)
+			}
+			var selected []*evals.Run
+			switch {
+			case runRef != "":
+				r, err := evals.ResolveRun(where, runRef)
+				if err != nil {
 					return err
+				}
+				selected = []*evals.Run{r}
+			case version != "":
+				r := evals.Latest(runs, version)
+				if r == nil {
+					return fmt.Errorf("no runs for version %s in %s", version, where)
+				}
+				selected = []*evals.Run{r}
+			default:
+				for _, v := range evals.Versions(runs) {
+					selected = append(selected, evals.Latest(runs, v))
 				}
 			}
 			out := cmd.OutOrStdout()
-			for _, v := range versions {
-				runID, err := db.LatestRunID(ctx, v)
-				if err != nil {
-					return err
+			for _, r := range selected {
+				fmt.Fprintf(out, "\n## Version %s (run %s, %s, %s)\n\n", r.Version, r.ID, r.Provider, r.StartedAt.Local().Format("2006-01-02 15:04"))
+				evals.WriteModeTable(out, r.Summarize(), markdown)
+				if compare {
+					fmt.Fprintln(out)
+					evals.WriteCompareTable(out, r.Rows(), markdown)
 				}
-				if runID == 0 {
-					fmt.Fprintf(out, "no runs for version %s\n", v)
-					continue
-				}
-				sums, err := db.SummarizeRun(ctx, runID)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintf(out, "\n## Version %s (run %d)\n\n", v, runID)
-				evals.WriteModeTable(out, sums, markdown)
-				if perCase || compare {
-					rows, err := db.RunRows(ctx, runID)
-					if err != nil {
-						return err
-					}
-					if compare {
-						fmt.Fprintln(out)
-						evals.WriteCompareTable(out, rows, markdown)
-					}
-					if perCase {
-						fmt.Fprintln(out)
-						evals.WriteCaseTable(out, rows, markdown)
-					}
+				if perCase {
+					fmt.Fprintln(out)
+					evals.WriteCaseTable(out, r.Rows(), markdown)
 				}
 			}
 			return nil
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&dbPath, "db", defaultEvalDB, "SQLite file to read")
-	f.StringVar(&version, "version", "", "only this version (default: every version, latest run each)")
-	f.BoolVar(&perCase, "cases", false, "include a per-case, per-stage table")
-	f.BoolVar(&compare, "compare", false, "include a per-case table comparing raw results with the filter's delivery")
-	f.BoolVar(&markdown, "markdown", true, "emit Markdown tables")
+	f.StringVar(&dir, "runs-dir", "", "where runs are read from (default <config dir>/evals)")
+	f.StringVar(&version, "version", "", "only the latest run of this version")
+	f.StringVar(&runRef, "run", "", "one run: an id, \"latest\", \"latest:<version>\", or a file")
+	f.BoolVar(&perCase, "cases", false, "add a per-case, per-stage table")
+	f.BoolVar(&compare, "compare", false, "add a per-case table comparing raw results with the filter's delivery")
+	f.BoolVar(&markdown, "markdown", true, "Markdown tables")
 	return cmd
 }

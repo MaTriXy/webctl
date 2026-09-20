@@ -1,6 +1,6 @@
 # Evals
 
-`multi_search_web eval` runs the cases in `evals/cases/` through the real pipeline and stores every stage in `evals/results.db`, a SQLite file in the repository (the only database this tool has). Rows are keyed by the behavior version (`multi_search_web --version`) so runs of different versions never mix. The full method and current results are in `docs/EVAL_REPORT.md`; the case format is in `evals/README.md`.
+`multi_search_web eval` runs the cases in `evals/cases/` through the real pipeline. Each run is saved as one JSON file under `~/multi_search_web/evals/` (test output, kept out of the repository). The full method and the most recent results are in `docs/EVAL_REPORT.md`; the case format is in `evals/README.md`.
 
 ## Stages
 
@@ -8,27 +8,23 @@
 - `filter`: Jev scoring, duplicate folding, threshold.
 - `scrape` (cases marked `scrape: true`): fetch kept pages, keep Jev-approved chunks, re-judge coverage, and check whether dropped chunks still covered anything.
 
-Each stage records results, characters, hand-labelled junk-domain hits, audit-flagged pages, expected-domain hits, theme coverage, timing, and Jev tokens. A case passes when its filter stage passes.
+Each stage records results, characters, hand-labelled junk-domain hits, audit-flagged pages, folded duplicates, expected-domain hits, theme coverage, timing, and Jev tokens. A case passes when its filter stage passes.
 
 ## Running
 
 ```
-multi_search_web eval                          # all cases, all stages, 2 in parallel
-multi_search_web eval --fresh                  # ignore cached provider results (24h cache otherwise)
+multi_search_web eval                                   # all cases, all stages, 2 in parallel
 multi_search_web eval -p searxng --verbose reddit-quiet-switches
 multi_search_web eval --modes filter --json
-multi_search_web eval report --compare         # Markdown tables per version, latest run each
-multi_search_web eval report --cases           # one row per case and stage
+multi_search_web eval --reuse-searches latest           # judge the last run's provider results again
+multi_search_web eval --reuse-searches latest:0.0.016 --notes "prompt v5"
+multi_search_web eval report                            # tables: latest run of every version
+multi_search_web eval report --run latest --compare     # per-case raw vs. filter table
+multi_search_web eval report --version 0.0.016 --cases
 ```
 
-The suite needs a Jev key. Provider results are cached in `evals/results.db` (table `search_cache`) for 24 hours so that prompt and threshold iterations judge identical inputs and spare the keyless tiers.
+The suite needs a Jev key. Search results drift from hour to hour, so to compare two versions of the filter on identical inputs, run once, then run again with `--reuse-searches <that run>`: the second run skips the providers and judges the saved results.
 
-## Tables in evals/results.db
+## Run files
 
-| table | one row per | columns |
-|---|---|---|
-| `runs` | eval invocation | version, git sha, provider, modes, notes, started/finished, tally |
-| `results` | case × stage | pass, results, chars, junk, flagged, folded, expected-domain hits, themes covered, page and chunk counts, timing, Jev tokens, error, failures, delivered URLs, every judged score |
-| `search_cache` | query × requested count | provider, fetched time, results JSON |
-
-Query it directly: `sqlite3 evals/results.db 'SELECT version, mode, SUM(chars) FROM results GROUP BY 1, 2'`.
+`<version>-<UTC time>.json`, e.g. `0.0.016-20260920T143000Z.json`, holding the settings, the tally, and every report with its stages, judged scores, and raw provider results. `--runs-dir` changes the directory for both `eval` and `eval report`; `--no-save` skips writing.

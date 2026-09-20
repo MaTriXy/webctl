@@ -36,29 +36,23 @@ go build -o multi_search_web ./cmd/multi_search_web
 
 The command exits non-zero if any case fails or errors.
 
-Provider results are cached in `evals/results.db` for 24 hours, so a
-second run judges exactly the same inputs as the first (and spares the
-keyless search tiers, which throttle after a few dozen calls). Pass
-`--fresh` to search again.
+Search results drift between runs. To compare two filter versions on the
+same inputs, run once and then run with `--reuse-searches <run id>`; the
+second run judges the first run's provider results without searching.
 
-## Results database
+## Run files
 
-Every run is stored in `evals/results.db` (SQLite; `--db` changes the path,
-`--db ""` skips it). Rows carry the multi_search_web behavior version from
-`internal/version`, so runs of different versions never mix. Bump that
-version whenever search, filtering, or scraping behavior changes.
+Every run is saved as one JSON file under `~/multi_search_web/evals/`
+(`--runs-dir` to change it, `--no-save` to skip). The file holds the settings,
+the tally, and every report with its stages, judged scores, and raw provider
+results. Runs are test output and stay out of the repository; the write-up in
+`docs/EVAL_REPORT.md` is what gets committed.
 
 ```bash
-./multi_search_web eval report                   # per-version, per-mode table (Markdown)
-./multi_search_web eval report --cases           # plus one row per case and stage
-./multi_search_web eval report --version 0.0.004
-sqlite3 evals/results.db 'SELECT version, mode, SUM(chars) FROM results GROUP BY 1, 2'
+./multi_search_web eval report                    # latest run of every version
+./multi_search_web eval report --run latest --compare
+./multi_search_web eval --reuse-searches latest   # re-judge the same provider results
 ```
-
-Tables: `runs` (one per invocation: version, git sha, provider, modes, notes,
-tally) and `results` (one per case and stage: pass, results, chars, junk,
-flagged, expected-domain hits, themes covered, page and chunk counts, timing,
-Jev tokens, failures, delivered URLs).
 
 ## Writing a case
 

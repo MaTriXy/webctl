@@ -1,6 +1,6 @@
 # Eval report: filter vs. no-filter
 
-multi_search_web 0.0.013, 2026-09-20. Every number here is in `evals/results.db`; regenerate the tables with `multi_search_web eval report --compare`.
+multi_search_web 0.0.013, 2026-09-20. The numbers come from eval runs made while the suite was being built (then stored in a SQLite file, since replaced by JSON run files under `~/multi_search_web/evals/`); regenerate current tables with `multi_search_web eval report --compare`.
 
 ## Summary
 
@@ -43,7 +43,7 @@ Each case runs one search and then three stages on the same results:
 
 For each stage the runner records what would be delivered (results, characters, hits on hand-labelled junk domains, hits on the domains where the best answers live) and asks Jev, in one batch request, whether the delivered text covers the case's expected themes. Two independent noise measures are used: `junk_domains`, hand-labelled per case from observed raw results (21 cases, 113 labelled hits on Exa), and a separate Jev audit that flags SEO, affiliate, and content-farm pages with a differently worded yes/no question. Thresholds and prompts were tuned with the audit and pass/fail; the junk labels are the ground truth the report leans on.
 
-Provider results are cached in the database for 24 hours, so a re-run judges identical inputs. Filter-stage timing includes only Jev.
+A run can re-judge an earlier run's provider results (`--reuse-searches`), so two filter versions can be compared on identical inputs. Filter-stage timing includes only Jev.
 
 ## Filter vs. no-filter, per case
 
@@ -146,8 +146,8 @@ The same sweep on v4-rubric You.com inputs (run 10) kept junk at 0/16 from 1.7 t
 ## Caveats
 
 - **The provider decides what the filter has to work with.** Exa's neural index returns papers and repositories for research queries and long excerpts (2–8K characters per result); SearXNG and You.com return keyword results with 150–500 character snippets. Jev scores on title, URL, and snippet, and the theme judge reads the same text, so short snippets both lower scores and undercount coverage. The scrape stage is the remedy when it matters.
-- **Free tiers throttle.** Exa's and Parallel's keyless endpoints rate-limited after a few dozen searches and stayed limited for over an hour, and You.com's free profile answered 402 after about 70; DuckDuckGo refused TCP connections from this address all day. Runs 8, 9, and 11 are partial or single-provider for that reason and are kept in the database, not in the headline. The local SearXNG documented in the README has no such limit and is what the reference run used.
-- **Results drift between runs.** Engines return different pages for the same query hours apart, so per-case pass/fail moves by one or two cases run to run. The cache makes any two runs of the same inputs comparable; the version history above is not one input set.
+- **Free tiers throttle.** Exa's and Parallel's keyless endpoints rate-limited after a few dozen searches and stayed limited for over an hour, and You.com's free profile answered 402 after about 70; DuckDuckGo refused TCP connections from this address all day. Runs 8, 9, and 11 are partial or single-provider for that reason and are not in the headline. The local SearXNG documented in the README has no such limit and is what the reference run used.
+- **Results drift between runs.** Engines return different pages for the same query hours apart, so per-case pass/fail moves by one or two cases run to run. `--reuse-searches` makes any two runs of the same inputs comparable; the version history above is not one input set.
 - **Junk labels are judgment calls.** Four hosts first labelled junk on the SQLite case (raxxo.shop, ultrathink.art, prodsens.live, 0x.run) were removed after reading their snippets: first-hand engineering posts with specific numbers, whatever the domain looks like. The remaining borderline survivors (a realtor's guide with actual price data, a keyboard guide claiming six months of hands-on use) are counted against the filter.
 - **Case bounds were corrected during the work** where a whole top-k was legitimately top-tier (12 meta-analyses for "what the studies say"). Those corrections are in the commit history; none loosened a junk or expected-domain check.
 
@@ -156,7 +156,7 @@ The same sweep on v4-rubric You.com inputs (run 10) kept junk at 0/16 from 1.7 t
 ```bash
 go build -o multi_search_web ./cmd/multi_search_web
 docker run -d --name searxng -p 8899:8080 -v "$PWD/docs/searxng/settings.yml:/etc/searxng/settings.yml:ro" searxng/searxng:latest
-SEARXNG_URL=http://localhost:8899 MULTI_SEARCH_WEB_PROVIDER=searxng ./multi_search_web eval --fresh
+SEARXNG_URL=http://localhost:8899 MULTI_SEARCH_WEB_PROVIDER=searxng ./multi_search_web eval
 ./multi_search_web eval report --compare          # tables per version, latest run each
 ./multi_search_web eval --verbose reddit-quiet-switches   # every judged score, keep/drop
 ```

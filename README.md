@@ -68,7 +68,7 @@ The keys file may be shared with other tools; unknown fields are preserved. Poin
 
 ## Backends
 
-Every search gathers results from three providers (`sources`, configurable) and fuses their rankings by reciprocal rank, so one engine's blind spot or bad day is covered by the others and each free tier carries a third of the load. Providers are taken in this order, skipping any that are cooling down: configured keyed providers (exa, parallel, sonar, youcom), then Exa, Parallel, and You.com over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. A provider that fails or answers empty is replaced by the next one; if fewer than three are available, fewer are used. Each attempt is capped at 12s and the whole search at 30s. Results carry the engines that returned them.
+Every search gathers results from three providers (`sources`, configurable) and fuses their rankings by reciprocal rank, so one engine's blind spot or bad day is covered by the others. Providers are taken in this order, skipping any that are cooling down: configured keyed providers (exa, parallel, sonar, youcom), then Exa, Parallel, and You.com over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. A provider that fails or answers empty is replaced by the next one; if fewer than three are available, fewer are used. Each attempt is capped at 12s and the whole search at 30s. Results carry the engines that returned them.
 
 ```bash
 multi_search_web --sources 1 "transformer circuits"   # plain fallback chain: first provider that answers
@@ -176,7 +176,7 @@ multi_search_web config set provider parallel   # persist a default in ~/multi_s
 multi_search_web config set min_score 2.2       # also: num, jev.base_url, jev.model, searxng_url, keys_file
 multi_search_web keys list|set|unset|validate   # non-interactive key management
 multi_search_web eval                           # run the eval suite (live calls; see evals/README.md)
-multi_search_web eval report --cases            # Markdown tables from evals/results.db, per version
+multi_search_web eval report --compare          # Markdown tables from the saved runs, per version
 multi_search_web --version                      # behavior version; bumped when results would change
 ```
 

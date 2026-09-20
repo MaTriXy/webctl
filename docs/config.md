@@ -63,4 +63,4 @@ Setting a key clears that provider's cooldown. The Jev key is required; without 
 | `~/multi_search_web/config.yaml` | settings |
 | `~/multi_search_web/cooldown.json` | provider cooldown state |
 | `~/secrets/keys.json` | API keys |
-| `evals/results.db` (in the repo) | eval runs and cached searches |
+| `~/multi_search_web/evals/*.json` | eval runs (one file each) |
