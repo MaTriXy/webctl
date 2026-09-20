@@ -48,7 +48,7 @@ You:    "latest advances in mechanistic interpretability 2025"
               │
               ▼
       ┌──────────────┐
-      │  Search API  │  (exa / parallel / sonar / youcom / ddg / searxng)
+      │  Search API  │  (brave / ketch / parallel / ddg / etc)
       │  25 results  │
       └───────┬──────┘
               │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │
