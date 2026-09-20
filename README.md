@@ -10,7 +10,7 @@ or, more likely:
 
 ```bash
 webctl "San Francisco giants MLB score recent games" \
-    --goal "What was the score of the specific SF Giants game that occurred on September 19th?"
+    --goal "The user asked to know the final score of last night's (September 19th) San Francisco Giants game in Major League Baseball"
 ```
 
 By default, webctl will try 3 web search backends.  Each result set is passed (with the original query context) to Jev for scoring;  the high-scoring subset is then deduped deterministically, then passed through a Jev judge.  This means your Claude (or whatever) doesn't have to read as much junk, which saves you $$ (sorry, Anthropic!).
