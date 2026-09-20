@@ -23,7 +23,7 @@ import (
 
 // Defaults.
 const (
-	DefaultProvider = "exa"
+	DefaultProvider = "" // auto: first usable in Chain order
 	DefaultNum      = 10
 	DefaultMinScore = 1.0
 	DefaultJevURL   = "https://api.typesafe.ai"
@@ -195,21 +195,47 @@ func (c *Config) JevKey() (string, error) {
 	return key, nil
 }
 
-// ResolveProvider picks the provider to use: the explicit choice if given,
-// otherwise the configured default, otherwise the first provider with a key.
+// Chain returns the providers to try, in order. An explicit choice yields a
+// one-element chain (validated later by ProviderKey). Otherwise the preferred
+// provider from config comes first (an error if it is unusable, since the
+// user asked for it), then every keyed provider with a key in Names order,
+// then the keyless fallbacks: ddg always, searxng when its URL is set.
+func (c *Config) Chain(explicit string) ([]string, error) {
+	if explicit = provider.Normalize(explicit); explicit != "" {
+		return []string{explicit}, nil
+	}
+	var chain []string
+	add := func(name string) {
+		for _, have := range chain {
+			if have == name {
+				return
+			}
+		}
+		chain = append(chain, name)
+	}
+	if pref := provider.Normalize(c.Provider); pref != "" {
+		if _, err := c.ProviderKey(pref); err != nil {
+			return nil, fmt.Errorf("configured provider %q is unusable: %w", pref, err)
+		}
+		add(pref)
+	}
+	for _, name := range provider.Keyed() {
+		if c.Usable(name) {
+			add(name)
+		}
+	}
+	add("ddg")
+	if c.Usable("searxng") {
+		add("searxng")
+	}
+	return chain, nil
+}
+
+// ResolveProvider returns the first provider in Chain(explicit).
 func (c *Config) ResolveProvider(explicit string) (string, error) {
-	if explicit != "" {
-		return strings.ToLower(explicit), nil
+	chain, err := c.Chain(explicit)
+	if err != nil {
+		return "", err
 	}
-	if c.Provider != "" && c.Keys.Has(keys.Name(c.Provider)) {
-		return c.Provider, nil
-	}
-	if configured := c.Keys.ConfiguredProviders(); len(configured) > 0 {
-		return string(configured[0]), nil
-	}
-	if c.Provider != "" {
-		// Return the default so the caller gets a "missing key" error naming it.
-		return c.Provider, nil
-	}
-	return "", errors.New("no search provider configured: run `smart_search setup`")
+	return chain[0], nil
 }

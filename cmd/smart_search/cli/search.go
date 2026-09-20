@@ -35,7 +35,7 @@ var sf searchFlags
 
 func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, or sonar (default: first configured)")
+	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, sonar, ddg, or searxng (default: auto — keyed providers with a key, then ddg, then searxng)")
 	f.IntVarP(&sf.num, "num", "n", 0, "number of results to request from the provider (default 10)")
 	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "minimum Jev relevance score to keep a result (default 1.0; with --noul, minimum P(yes), default 0.5)")
 	f.BoolVar(&sf.jsonOut, "json", false, "emit results as JSON")
@@ -55,8 +55,12 @@ type qualifier interface {
 
 // Construction hooks. Tests override these to inject fakes.
 var (
-	newProvider = func(name, key string) (provider.Provider, error) {
-		return provider.New(name, key, provider.Options{})
+	newProvider = func(cfg *config.Config, name string) (provider.Provider, error) {
+		cred, err := cfg.ProviderKey(name)
+		if err != nil {
+			return nil, err
+		}
+		return provider.New(name, cred, provider.Options{})
 	}
 	newQualifier = func(cfg *config.Config, key string) qualifier {
 		c := jev.NewClient(key)
@@ -73,16 +77,17 @@ const noulDefaultThreshold = 0.5
 
 // searchOptions is the fully-resolved, validated input to the pipeline.
 type searchOptions struct {
-	Query    string
-	Provider string
-	Num      int
-	MinScore float64
-	NoFilter bool
-	Batch    bool
-	Verbose  bool
-	Rubric   []string
-	Noul     string
-	Format   outputFormat
+	Query string
+	// Providers is the ordered chain to try; the first that succeeds wins.
+	Providers []string
+	Num       int
+	MinScore  float64
+	NoFilter  bool
+	Batch     bool
+	Verbose   bool
+	Rubric    []string
+	Noul      string
+	Format    outputFormat
 }
 
 type outputFormat int
@@ -158,11 +163,11 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		}
 	}
 
-	name, err := cfg.ResolveProvider(f.provider)
+	chain, err := cfg.Chain(f.provider)
 	if err != nil {
 		return searchOptions{}, err
 	}
-	opts.Provider = name
+	opts.Providers = chain
 	return opts, nil
 }
 
@@ -182,24 +187,23 @@ func parseRubric(s string) ([]string, error) {
 
 // runPipeline executes search → qualify → filter → output.
 func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, out, errOut io.Writer) error {
-	key, err := cfg.ProviderKey(opts.Provider)
-	if err != nil {
-		return err
+	// An explicitly chosen provider must be usable; fail before any network call.
+	if len(opts.Providers) == 1 {
+		if _, err := cfg.ProviderKey(opts.Providers[0]); err != nil {
+			return err
+		}
 	}
 	// Resolve the Jev key before searching so a missing key fails fast
 	// instead of after a paid provider call.
 	var jevKey string
 	if !opts.NoFilter {
+		var err error
 		if jevKey, err = cfg.JevKey(); err != nil {
 			return err
 		}
 	}
 
-	p, err := newProvider(opts.Provider, key)
-	if err != nil {
-		return err
-	}
-	results, err := p.Search(ctx, opts.Query, opts.Num)
+	p, results, err := searchChain(ctx, cfg, opts.Providers, opts.Query, opts.Num, errOut)
 	if err != nil {
 		return err
 	}
@@ -233,6 +237,33 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		writeSummary(errOut, p.Name(), ranked, opts, usage)
 	}
 	return writeQualified(out, ranked, opts)
+}
+
+// searchChain tries each provider in order and returns the first successful
+// search. Failures are reported to errOut as the chain falls through; if every
+// provider fails, the joined errors are returned.
+func searchChain(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (provider.Provider, []provider.SearchResult, error) {
+	var errs []error
+	for i, name := range chain {
+		p, err := newProvider(cfg, name)
+		if err == nil {
+			var results []provider.SearchResult
+			if results, err = p.Search(ctx, query, num); err == nil {
+				return p, results, nil
+			}
+		}
+		errs = append(errs, err)
+		if ctx.Err() != nil {
+			break
+		}
+		if i+1 < len(chain) {
+			fmt.Fprintf(errOut, "%s failed (%v); trying %s\n", name, err, chain[i+1])
+		}
+	}
+	if len(errs) == 1 {
+		return nil, nil, errs[0]
+	}
+	return nil, nil, fmt.Errorf("all %d providers failed: %w", len(errs), errors.Join(errs...))
 }
 
 // rankedResult is a qualified result plus the pipeline's keep/drop decision.

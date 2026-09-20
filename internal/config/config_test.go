@@ -246,25 +246,32 @@ func TestJevKey(t *testing.T) {
 	}
 }
 
-func TestResolveProvider(t *testing.T) {
+func TestChain(t *testing.T) {
 	cases := []struct {
 		name     string
 		cfg      Config
 		explicit string
-		want     string
+		want     []string
 		wantErr  bool
 	}{
-		{"explicit wins", Config{Provider: "exa", Keys: &keys.Store{SonarAPIKey: "s"}}, "Sonar", "sonar", false},
-		{"explicit even without key", Config{Provider: "exa", Keys: &keys.Store{}}, "parallel", "parallel", false},
-		{"default with key", Config{Provider: "parallel", Keys: &keys.Store{ParallelAPIKey: "p", ExaAPIKey: "e"}}, "", "parallel", false},
-		{"default without key falls to first configured", Config{Provider: "exa", Keys: &keys.Store{SonarAPIKey: "s"}}, "", "sonar", false},
-		{"no keys returns default for error naming", Config{Provider: "exa", Keys: &keys.Store{}}, "", "exa", false},
-		{"nothing at all", Config{Keys: &keys.Store{}}, "", "", true},
+		{"explicit wins", Config{Provider: "exa", Keys: &keys.Store{SonarAPIKey: "s"}}, "Sonar", []string{"sonar"}, false},
+		{"explicit even without key", Config{Provider: "exa", Keys: &keys.Store{}}, "parallel", []string{"parallel"}, false},
+		{"explicit alias", Config{Keys: &keys.Store{}}, "DuckDuckGo", []string{"ddg"}, false},
+		{"preferred first, then keyed in order, then ddg", Config{Provider: "sonar", Keys: &keys.Store{ParallelAPIKey: "p", ExaAPIKey: "e", SonarAPIKey: "s"}}, "", []string{"sonar", "exa", "parallel", "ddg"}, false},
+		{"preferred without key is an error", Config{Provider: "exa", Keys: &keys.Store{SonarAPIKey: "s"}}, "", nil, true},
+		{"no keys falls to ddg", Config{Keys: &keys.Store{}}, "", []string{"ddg"}, false},
+		{"searxng after ddg when configured", Config{Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"exa", "ddg", "searxng"}, false},
+		{"preferred keyless", Config{Provider: "searxng", Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa", "ddg"}, false},
+		{"preferred ddg", Config{Provider: "ddg", Keys: &keys.Store{ExaAPIKey: "e"}}, "", []string{"ddg", "exa"}, false},
 	}
 	for _, tc := range cases {
-		got, err := tc.cfg.ResolveProvider(tc.explicit)
-		if (err != nil) != tc.wantErr || got != tc.want {
-			t.Errorf("%s: got %q, %v; want %q, err=%v", tc.name, got, err, tc.want, tc.wantErr)
+		got, err := tc.cfg.Chain(tc.explicit)
+		if (err != nil) != tc.wantErr || strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("%s: got %v, %v; want %v, err=%v", tc.name, got, err, tc.want, tc.wantErr)
+		}
+		first, err2 := tc.cfg.ResolveProvider(tc.explicit)
+		if (err2 != nil) != tc.wantErr || (len(tc.want) > 0 && first != tc.want[0]) {
+			t.Errorf("%s: ResolveProvider = %q, %v", tc.name, first, err2)
 		}
 	}
 }

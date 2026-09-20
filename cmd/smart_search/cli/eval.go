@@ -84,11 +84,7 @@ Cases are YAML files embedded from evals/cases/, or a directory given with
 					if name == "" {
 						name = defaultProvider
 					}
-					key, err := cfg.ProviderKey(name)
-					if err != nil {
-						return nil, err
-					}
-					return newProvider(name, key)
+					return newProvider(cfg, name)
 				},
 			}
 

@@ -90,6 +90,11 @@ type harness struct {
 	dir  string
 	prov *fakeProvider
 	qual *fakeQualifier
+	// provs, when set, supplies a distinct fake per provider name; names not
+	// present fall back to prov.
+	provs map[string]*fakeProvider
+	// built records the provider names constructed, in order.
+	built []string
 }
 
 func newHarness(t *testing.T, store keys.Store) *harness {
@@ -111,9 +116,14 @@ func newHarness(t *testing.T, store keys.Store) *harness {
 		qual: &fakeQualifier{scores: map[string]float64{paper.URL: 2.9, wiki.URL: 1.6, blog.URL: 0.3}},
 	}
 	origProv, origQual := newProvider, newQualifier
-	newProvider = func(name, key string) (provider.Provider, error) {
-		if key == "" {
-			return nil, errors.New("fake: empty key")
+	newProvider = func(cfg *config.Config, name string) (provider.Provider, error) {
+		if _, err := cfg.ProviderKey(name); err != nil {
+			return nil, err
+		}
+		h.built = append(h.built, name)
+		if p, ok := h.provs[name]; ok {
+			p.name = name
+			return p, nil
 		}
 		h.prov.name = name
 		return h.prov, nil
@@ -581,5 +591,74 @@ func TestClipSnippet(t *testing.T) {
 	}
 	if got := clipSnippet("héllo wörld", 5); got != "héllo…" {
 		t.Errorf("clipSnippet = %q", got)
+	}
+}
+
+func TestSearchChainFallsBackOnFailure(t *testing.T) {
+	h := newHarness(t, keys.Store{ExaAPIKey: "e", JevAPIKey: "j"})
+	h.provs = map[string]*fakeProvider{
+		"exa": {err: errors.New("exa is down")},
+		"ddg": {results: []provider.SearchResult{paper}},
+	}
+	out, errOut, err := h.run("q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(h.built, ",") != "exa,ddg" {
+		t.Errorf("chain order = %v, want exa,ddg", h.built)
+	}
+	if !strings.Contains(errOut, "exa failed (exa is down); trying ddg") {
+		t.Errorf("fallback notice missing: %q", errOut)
+	}
+	if !strings.Contains(errOut, "ddg: 1 results → 1 kept") {
+		t.Errorf("summary should name the provider that succeeded: %q", errOut)
+	}
+	if !strings.Contains(out, "Attention Is All You Need") {
+		t.Errorf("output = %q", out)
+	}
+}
+
+func TestSearchChainAllFail(t *testing.T) {
+	h := newHarness(t, keys.Store{ExaAPIKey: "e", SearXNGURL: "http://sx", JevAPIKey: "j"})
+	h.prov.err = errors.New("boom")
+	_, _, err := h.run("q")
+	if err == nil || !strings.Contains(err.Error(), "all 3 providers failed") || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("err = %v", err)
+	}
+	if strings.Join(h.built, ",") != "exa,ddg,searxng" {
+		t.Errorf("chain order = %v", h.built)
+	}
+}
+
+func TestSearchZeroConfigUsesDDG(t *testing.T) {
+	h := newHarness(t, keys.Store{}) // nothing configured at all
+	_, _, err := h.run("--no-filter", "--urls-only", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.prov.name != "ddg" || strings.Join(h.built, ",") != "ddg" {
+		t.Errorf("provider = %q, built = %v; want ddg", h.prov.name, h.built)
+	}
+
+	// Explicit ddg works without keys too; explicit searxng without a URL does not.
+	h = newHarness(t, keys.Store{})
+	if _, _, err := h.run("-p", "duckduckgo", "--no-filter", "--urls-only", "q"); err != nil || h.prov.name != "ddg" {
+		t.Errorf("explicit ddg: %v, %q", err, h.prov.name)
+	}
+	_, _, err = h.run("-p", "searxng", "--no-filter", "q")
+	if err == nil || !strings.Contains(err.Error(), "SEARXNG_URL") {
+		t.Errorf("explicit searxng without URL: %v", err)
+	}
+}
+
+func TestSearchConfiguredProviderWithoutKeyErrors(t *testing.T) {
+	h := newHarness(t, keys.Store{JevAPIKey: "j"})
+	t.Setenv("SMART_SEARCH_PROVIDER", "sonar")
+	_, _, err := h.run("q")
+	if err == nil || !strings.Contains(err.Error(), `configured provider "sonar" is unusable`) {
+		t.Errorf("err = %v", err)
+	}
+	if len(h.built) != 0 {
+		t.Error("should fail before constructing any provider")
 	}
 }
