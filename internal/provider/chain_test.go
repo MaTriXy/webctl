@@ -98,3 +98,39 @@ func TestChainTimeouts(t *testing.T) {
 		t.Errorf("chain ran %s despite a 30ms budget", time.Since(start))
 	}
 }
+
+func TestChainTopsUpShortAnswers(t *testing.T) {
+	mk := func(n int, prefix string) []SearchResult {
+		var out []SearchResult
+		for i := 0; i < n; i++ {
+			out = append(out, SearchResult{Title: prefix + " " + string(rune('a'+i)), URL: "https://" + prefix + ".example/" + string(rune('a'+i))})
+		}
+		return out
+	}
+	shared := SearchResult{Title: "shared page title here", URL: "https://shared.example/x"}
+	a := append([]SearchResult{shared}, mk(2, "a")...) // 3 of 10 requested: short
+	b := append(mk(4, "b"), shared)
+	c := chainOf(&chainStub{name: "a", results: a}, &chainStub{name: "b", results: b}, &chainStub{name: "c", hang: true})
+	got, err := c.Search(context.Background(), "q", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Name() != "a+b" || len(got) != 7 || got[0].URL != shared.URL {
+		t.Errorf("name %q, %d results, first %s", c.Name(), len(got), got[0].URL)
+	}
+
+	// A full answer is not topped up; NoTopUp disables it; a failing next provider is skipped.
+	c = chainOf(&chainStub{name: "a", results: mk(6, "a")}, &chainStub{name: "b", results: b})
+	if got, _ := c.Search(context.Background(), "q", 10); len(got) != 6 || c.Name() != "a" {
+		t.Errorf("full answer topped up: %d, %q", len(got), c.Name())
+	}
+	c = chainOf(&chainStub{name: "a", results: a}, &chainStub{name: "b", results: b})
+	c.NoTopUp = true
+	if got, _ := c.Search(context.Background(), "q", 10); len(got) != 3 {
+		t.Errorf("NoTopUp ignored: %d", len(got))
+	}
+	c = chainOf(&chainStub{name: "a", results: a}, &chainStub{name: "b", err: errors.New("down")})
+	if got, _ := c.Search(context.Background(), "q", 10); len(got) != 3 || c.Name() != "a" {
+		t.Errorf("failed top-up should keep the first answer: %d, %q", len(got), c.Name())
+	}
+}

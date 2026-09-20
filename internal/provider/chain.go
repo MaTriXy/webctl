@@ -28,10 +28,18 @@ type Chain struct {
 	// OnFallthrough, if set, is told about each provider that failed and
 	// which one is tried next.
 	OnFallthrough func(failed string, err error, next string)
+	// NoTopUp disables topping up a short answer from the next provider.
+	NoTopUp bool
 
-	// answered is the provider that served the last successful search.
+	// answered is the provider (or fused pair) that served the last search.
 	answered string
 }
+
+// topUpFraction is the share of the requested count below which an answer
+// is short enough to top up from the next provider. Keyless tiers that are
+// throttled tend to answer with a truncated, lower-quality list rather than
+// an error.
+const topUpFraction = 0.5
 
 // Name returns the provider that answered the last search, or the first
 // name before any search.
@@ -73,6 +81,9 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 			cancel()
 			if err == nil && (len(results) > 0 || last) {
 				c.answered = p.Name()
+				if !last && !c.NoTopUp && len(results) < int(float64(numResults)*topUpFraction) {
+					results = c.topUp(chainCtx, attempt, i+1, query, numResults, Ranked{Engine: p.Name(), Results: results})
+				}
 				return results, nil
 			}
 			if err == nil {
@@ -95,6 +106,32 @@ func (c *Chain) Search(ctx context.Context, query string, numResults int) ([]Sea
 		return nil, errs[0]
 	}
 	return nil, fmt.Errorf("all %d providers failed: %w", len(c.Names), errors.Join(errs...))
+}
+
+// topUp asks the next provider that can be built for the same query and
+// fuses its list with first by reciprocal rank. Any failure leaves first
+// as it was. The fused engine names become the chain's Name.
+func (c *Chain) topUp(ctx context.Context, attempt time.Duration, from int, query string, numResults int, first Ranked) []SearchResult {
+	for _, name := range c.Names[from:] {
+		p, err := c.New(name)
+		if err != nil {
+			continue
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, attempt)
+		more, err := p.Search(attemptCtx, query, numResults)
+		cancel()
+		if err != nil || len(more) == 0 {
+			continue
+		}
+		fused := Fuse([]Ranked{first, {Engine: p.Name(), Results: more}}, RRFK, numResults)
+		out := make([]SearchResult, 0, len(fused))
+		for _, f := range fused {
+			out = append(out, f.SearchResult)
+		}
+		c.answered = first.Engine + "+" + p.Name()
+		return out
+	}
+	return first.Results
 }
 
 // Validate validates the first provider.

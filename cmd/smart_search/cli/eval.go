@@ -188,7 +188,7 @@ Cases are YAML files embedded from evals/cases/, or a directory given with
 	f.BoolVar(&list, "list", false, "list cases and exit without running them")
 	f.Float64Var(&threshold, "coverage-threshold", evals.DefaultCoverageThreshold, "P(yes) needed to count a theme as covered")
 	f.StringVar(&modesFlag, "modes", "nofilter,filter,scrape", "comma-separated stages to run")
-	f.IntVar(&parallel, "parallel", 4, "cases to run concurrently")
+	f.IntVar(&parallel, "parallel", 2, "cases to run concurrently (keyless search tiers throttle above this)")
 	f.StringVar(&dbPath, "db", defaultEvalDB, "SQLite file to store results in (empty to skip)")
 	f.StringVar(&notes, "notes", "", "free-text note stored on the run")
 	cmd.AddCommand(newEvalReportCmd())

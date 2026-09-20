@@ -26,7 +26,7 @@ keyless Exa and Parallel endpoints are used without them.
 ```bash
 go build -o smart_search ./cmd/smart_search
 
-./smart_search eval                       # every case, all stages, 4 in parallel
+./smart_search eval                       # every case, all stages, 2 in parallel
 ./smart_search eval --modes filter        # one stage only
 ./smart_search eval -p parallel           # pin one provider
 ./smart_search eval --verbose reddit-espresso-grinder github-uv

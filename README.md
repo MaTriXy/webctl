@@ -39,7 +39,7 @@ Without a Jev key, pass `--no-filter` to get raw results.
 
 ## Backends
 
-With no `--provider`, backends are tried in order until one succeeds: configured keyed providers (exa, parallel, sonar), then Exa and Parallel over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. Each attempt is capped at 12s and the whole chain at 30s. Exa and Parallel return page excerpts with each result; those stand in for pages that cannot be scraped.
+With no `--provider`, backends are tried in order until one succeeds: configured keyed providers (exa, parallel, sonar), then Exa and Parallel over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. Each attempt is capped at 12s and the whole chain at 30s. When a provider answers with fewer than half the requested results (throttled free tiers do this instead of erroring), the next provider is queried too and the lists are fused by reciprocal rank. Exa and Parallel return page excerpts with each result; those stand in for pages that cannot be scraped.
 
 ```bash
 smart_search -p exa "transformer circuits"   # pick one
