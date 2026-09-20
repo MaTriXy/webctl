@@ -12,7 +12,7 @@ You:    "latest advances in mechanistic interpretability 2025"
          ▼
     ┌─────────────┐
     │  Search API  │  (exa / parallel / sonar)
-    │  10 results  │
+    │  50 results  │
     └──────┬──────┘
            │
            ▼
@@ -23,7 +23,7 @@ You:    "latest advances in mechanistic interpretability 2025"
            │
            ▼
     ┌─────────────┐
-    │  3 results   │  ✂️  low scorers dropped
+    │  8 results   │  ✂️  low scorers dropped
     │  (relevant)  │  ✅  high scorers kept
     └─────────────┘
 ```
