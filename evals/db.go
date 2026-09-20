@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS results (
 	chunks_total  INTEGER DEFAULT 0,
 	chunks_kept   INTEGER DEFAULT 0,
 	chars_raw     INTEGER DEFAULT 0,
+	dropped_covered INTEGER DEFAULT 0,
 	duration_ms   INTEGER DEFAULT 0,
 	search_ms     INTEGER DEFAULT 0,
 	tokens_in     INTEGER DEFAULT 0,
@@ -136,10 +137,10 @@ func (d *DB) RecordReport(ctx context.Context, runID int64, rep *Report) error {
 			stErr = rep.Error
 		}
 		_, err := d.sql.ExecContext(ctx, `INSERT INTO results (run_id, version, "case", tags, mode, provider, passed, results, chars, junk, flagged, expected_hits,
-			themes_total, themes_covered, pages_ok, pages_failed, chunks_total, chunks_kept, chars_raw, duration_ms, search_ms, tokens_in, tokens_out, error, failures, urls, judged)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			themes_total, themes_covered, pages_ok, pages_failed, chunks_total, chunks_kept, chars_raw, dropped_covered, duration_ms, search_ms, tokens_in, tokens_out, error, failures, urls, judged)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			runID, rep.Version, rep.Case, tags, string(st.Mode), rep.Provider, boolInt(st.Passed && stErr == ""), st.Results, st.Chars, st.Junk, st.Flagged, st.ExpectedHits,
-			len(st.Themes), st.Covered, st.PagesOK, st.PagesFailed, st.ChunksTotal, st.ChunksKept, st.CharsRaw,
+			len(st.Themes), st.Covered, st.PagesOK, st.PagesFailed, st.ChunksTotal, st.ChunksKept, st.CharsRaw, st.DroppedCovered,
 			st.Duration.Milliseconds(), rep.SearchDuration.Milliseconds(), st.Usage.InputTokens, st.Usage.OutputTokens,
 			stErr, strings.Join(st.Failures, "\n"), string(urls), stJudged)
 		if err != nil {
@@ -158,26 +159,27 @@ func boolInt(b bool) int {
 
 // ModeSummary aggregates one mode across the latest run of a version.
 type ModeSummary struct {
-	Version       string
-	Mode          Mode
-	Cases         int
-	Passed        int
-	Results       int
-	Chars         int
-	Junk          int
-	Flagged       int
-	ExpectedHits  int
-	ThemesTotal   int
-	ThemesCovered int
-	PagesOK       int
-	PagesFailed   int
-	ChunksTotal   int
-	ChunksKept    int
-	CharsRaw      int
-	DurationMs    int64
-	SearchMs      int64
-	TokensIn      int
-	TokensOut     int
+	Version        string
+	Mode           Mode
+	Cases          int
+	Passed         int
+	Results        int
+	Chars          int
+	Junk           int
+	Flagged        int
+	ExpectedHits   int
+	ThemesTotal    int
+	ThemesCovered  int
+	PagesOK        int
+	PagesFailed    int
+	ChunksTotal    int
+	ChunksKept     int
+	CharsRaw       int
+	DroppedCovered int
+	DurationMs     int64
+	SearchMs       int64
+	TokensIn       int
+	TokensOut      int
 }
 
 // LatestRunID returns the newest run id for version (0 if none).
@@ -211,7 +213,7 @@ func (d *DB) Versions(ctx context.Context) ([]string, error) {
 // SummarizeRun aggregates a run's rows per mode, in AllModes order.
 func (d *DB) SummarizeRun(ctx context.Context, runID int64) ([]ModeSummary, error) {
 	rows, err := d.sql.QueryContext(ctx, `SELECT version, mode, COUNT(*), SUM(passed), SUM(results), SUM(chars), SUM(junk), SUM(flagged), SUM(expected_hits),
-		SUM(themes_total), SUM(themes_covered), SUM(pages_ok), SUM(pages_failed), SUM(chunks_total), SUM(chunks_kept), SUM(chars_raw),
+		SUM(themes_total), SUM(themes_covered), SUM(pages_ok), SUM(pages_failed), SUM(chunks_total), SUM(chunks_kept), SUM(chars_raw), SUM(dropped_covered),
 		SUM(duration_ms), SUM(search_ms), SUM(tokens_in), SUM(tokens_out)
 		FROM results WHERE run_id = ? AND mode != '' GROUP BY version, mode`, runID)
 	if err != nil {
@@ -223,7 +225,7 @@ func (d *DB) SummarizeRun(ctx context.Context, runID int64) ([]ModeSummary, erro
 		var s ModeSummary
 		var mode string
 		if err := rows.Scan(&s.Version, &mode, &s.Cases, &s.Passed, &s.Results, &s.Chars, &s.Junk, &s.Flagged, &s.ExpectedHits,
-			&s.ThemesTotal, &s.ThemesCovered, &s.PagesOK, &s.PagesFailed, &s.ChunksTotal, &s.ChunksKept, &s.CharsRaw,
+			&s.ThemesTotal, &s.ThemesCovered, &s.PagesOK, &s.PagesFailed, &s.ChunksTotal, &s.ChunksKept, &s.CharsRaw, &s.DroppedCovered,
 			&s.DurationMs, &s.SearchMs, &s.TokensIn, &s.TokensOut); err != nil {
 			return nil, err
 		}
@@ -244,33 +246,34 @@ func (d *DB) SummarizeRun(ctx context.Context, runID int64) ([]ModeSummary, erro
 
 // CaseRow is one stored stage result.
 type CaseRow struct {
-	Case          string
-	Tags          string
-	Mode          Mode
-	Passed        bool
-	Results       int
-	Chars         int
-	Junk          int
-	Flagged       int
-	ExpectedHits  int
-	ThemesTotal   int
-	ThemesCovered int
-	PagesOK       int
-	PagesFailed   int
-	ChunksTotal   int
-	ChunksKept    int
-	CharsRaw      int
-	DurationMs    int64
-	SearchMs      int64
-	TokensIn      int
-	Error         string
-	Failures      string
+	Case           string
+	Tags           string
+	Mode           Mode
+	Passed         bool
+	Results        int
+	Chars          int
+	Junk           int
+	Flagged        int
+	ExpectedHits   int
+	ThemesTotal    int
+	ThemesCovered  int
+	PagesOK        int
+	PagesFailed    int
+	ChunksTotal    int
+	ChunksKept     int
+	CharsRaw       int
+	DroppedCovered int
+	DurationMs     int64
+	SearchMs       int64
+	TokensIn       int
+	Error          string
+	Failures       string
 }
 
 // RunRows returns every stage row of a run, ordered by case then mode.
 func (d *DB) RunRows(ctx context.Context, runID int64) ([]CaseRow, error) {
 	rows, err := d.sql.QueryContext(ctx, `SELECT "case", tags, mode, passed, results, chars, junk, flagged, expected_hits, themes_total, themes_covered,
-		pages_ok, pages_failed, chunks_total, chunks_kept, chars_raw, duration_ms, search_ms, tokens_in, error, failures
+		pages_ok, pages_failed, chunks_total, chunks_kept, chars_raw, dropped_covered, duration_ms, search_ms, tokens_in, error, failures
 		FROM results WHERE run_id = ? ORDER BY "case", CASE mode WHEN 'nofilter' THEN 0 WHEN 'filter' THEN 1 ELSE 2 END`, runID)
 	if err != nil {
 		return nil, err
@@ -282,7 +285,7 @@ func (d *DB) RunRows(ctx context.Context, runID int64) ([]CaseRow, error) {
 		var mode string
 		var passed int
 		if err := rows.Scan(&r.Case, &r.Tags, &mode, &passed, &r.Results, &r.Chars, &r.Junk, &r.Flagged, &r.ExpectedHits, &r.ThemesTotal, &r.ThemesCovered,
-			&r.PagesOK, &r.PagesFailed, &r.ChunksTotal, &r.ChunksKept, &r.CharsRaw, &r.DurationMs, &r.SearchMs, &r.TokensIn, &r.Error, &r.Failures); err != nil {
+			&r.PagesOK, &r.PagesFailed, &r.ChunksTotal, &r.ChunksKept, &r.CharsRaw, &r.DroppedCovered, &r.DurationMs, &r.SearchMs, &r.TokensIn, &r.Error, &r.Failures); err != nil {
 			return nil, err
 		}
 		r.Mode, r.Passed = Mode(mode), passed == 1

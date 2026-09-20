@@ -326,6 +326,9 @@ type Stage struct {
 	ChunksTotal int `json:"chunks_total,omitempty"`
 	ChunksKept  int `json:"chunks_kept,omitempty"`
 	CharsRaw    int `json:"chars_raw,omitempty"`
+	// DroppedCovered counts expected themes that the discarded chunks still
+	// cover: signal the chunk filter threw away. Lower is better.
+	DroppedCovered int `json:"dropped_covered,omitempty"`
 }
 
 // Report is the outcome of one case. The top-level fields describe the
@@ -689,7 +692,7 @@ func writeStage(w io.Writer, st Stage) {
 		fmt.Fprintf(w, "  expected-domain %d", st.ExpectedHits)
 	}
 	if st.Mode == ModeScrape {
-		fmt.Fprintf(w, "  pages %d ok/%d failed  chunks %d→%d  %d→%d chars", st.PagesOK, st.PagesFailed, st.ChunksTotal, st.ChunksKept, st.CharsRaw, st.Chars)
+		fmt.Fprintf(w, "  pages %d ok/%d failed  chunks %d→%d  %d→%d chars  dropped-still-cover %d", st.PagesOK, st.PagesFailed, st.ChunksTotal, st.ChunksKept, st.CharsRaw, st.Chars, st.DroppedCovered)
 	}
 	fmt.Fprintf(w, "  %s", st.Duration.Round(100*time.Millisecond))
 	if st.Error != "" {

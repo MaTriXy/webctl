@@ -9,14 +9,15 @@ import (
 // WriteModeTable prints one row per mode: what reached the context window
 // and how well it covered the expected themes.
 func WriteModeTable(w io.Writer, sums []ModeSummary, markdown bool) {
-	header := []string{"mode", "cases", "pass", "results", "chars", "junk", "flagged", "expected-domain hits", "themes covered", "pages ok/failed", "chunks kept/total", "chars raw→kept", "avg stage ms", "jev tokens in"}
+	header := []string{"mode", "cases", "pass", "results", "chars", "junk", "flagged", "expected-domain hits", "themes covered", "pages ok/failed", "chunks kept/total", "chars raw→kept", "themes in dropped chunks", "avg stage ms", "jev tokens in"}
 	var rows [][]string
 	for _, s := range sums {
-		pages, chunks, raw := "", "", ""
+		pages, chunks, raw, dropped := "", "", "", ""
 		if s.Mode == ModeScrape {
 			pages = fmt.Sprintf("%d/%d", s.PagesOK, s.PagesFailed)
 			chunks = fmt.Sprintf("%d/%d", s.ChunksKept, s.ChunksTotal)
 			raw = fmt.Sprintf("%d→%d", s.CharsRaw, s.Chars)
+			dropped = fmt.Sprintf("%d/%d", s.DroppedCovered, s.ThemesTotal)
 		}
 		avgMs := int64(0)
 		if s.Cases > 0 {
@@ -25,7 +26,7 @@ func WriteModeTable(w io.Writer, sums []ModeSummary, markdown bool) {
 		rows = append(rows, []string{
 			string(s.Mode), fmt.Sprint(s.Cases), fmt.Sprintf("%d/%d", s.Passed, s.Cases), fmt.Sprint(s.Results), fmt.Sprint(s.Chars),
 			fmt.Sprint(s.Junk), fmt.Sprint(s.Flagged), fmt.Sprint(s.ExpectedHits), fmt.Sprintf("%d/%d", s.ThemesCovered, s.ThemesTotal),
-			pages, chunks, raw, fmt.Sprint(avgMs), fmt.Sprint(s.TokensIn),
+			pages, chunks, raw, dropped, fmt.Sprint(avgMs), fmt.Sprint(s.TokensIn),
 		})
 	}
 	writeTable(w, header, rows, markdown)

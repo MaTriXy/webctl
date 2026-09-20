@@ -291,10 +291,10 @@ func (r *Runner) stageScrape(ctx context.Context, c Case, kept []KeptResult, fla
 	pages := scraper.FetchAll(ctx, urls, scrape.DefaultConcurrency)
 
 	type outcome struct {
-		text         string
-		total, keptN int
-		usage        jev.Usage
-		err          error
+		text, dropped string
+		total, keptN  int
+		usage         jev.Usage
+		err           error
 	}
 	outcomes := make([]outcome, len(kept))
 	var wg sync.WaitGroup
@@ -322,13 +322,16 @@ func (r *Runner) stageScrape(ctx context.Context, c Case, kept []KeptResult, fla
 				o.text = text
 				o.keptN = len(chunks)
 			} else {
-				var keep []string
+				var keep, drop []string
 				for j, ch := range chunks {
 					if j < len(answers) && answers[j] != nil && answers[j].Yes() {
 						keep = append(keep, ch)
+					} else {
+						drop = append(drop, ch)
 					}
 				}
 				o.text = scrape.Join(keep)
+				o.dropped = scrape.Join(drop)
 				o.keptN = len(keep)
 			}
 			outcomes[i] = o
@@ -367,6 +370,25 @@ func (r *Runner) stageScrape(ctx context.Context, c Case, kept []KeptResult, fla
 	}
 	if err := r.judge(ctx, c, &st, delivered); err != nil {
 		st.Error = err.Error()
+	}
+	// Recall check: do the discarded chunks still cover any theme?
+	var discarded []provider.SearchResult
+	for i, k := range kept {
+		if strings.TrimSpace(outcomes[i].dropped) != "" {
+			discarded = append(discarded, provider.SearchResult{Title: k.Title, URL: k.URL, Snippet: scrape.Truncate(outcomes[i].dropped, coverageSnippetChars)})
+		}
+	}
+	if len(discarded) > 0 && len(c.ExpectedThemes) > 0 && st.Error == "" {
+		themes, usage, err := r.coverage(ctx, c.Query, c.ExpectedThemes, forJudge(discarded), r.threshold(c))
+		st.Usage.Add(usage)
+		if err != nil {
+			st.Error = fmt.Sprintf("dropped-chunk coverage: %v", err)
+		}
+		for _, th := range themes {
+			if th.Covered {
+				st.DroppedCovered++
+			}
+		}
 	}
 	st.Passed = st.Error == "" && len(st.Failures) == 0
 	return st
