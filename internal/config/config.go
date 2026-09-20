@@ -173,8 +173,9 @@ func Load(opts Options) (*Config, error) {
 }
 
 // ProviderKey returns the credential for the named search provider: the API
-// key for keyed providers, the instance URL for searxng, and "" for ddg. The
-// error is actionable when the credential is missing.
+// key for keyed providers, the instance URL for searxng, and "" for ddg. Exa
+// and Parallel yield "" without error when no key is set, since they work
+// keyless. The error is actionable when a required credential is missing.
 func (c *Config) ProviderKey(name string) (string, error) {
 	name = provider.Normalize(name)
 	if name == "ddg" {
@@ -186,6 +187,9 @@ func (c *Config) ProviderKey(name string) (string, error) {
 	}
 	key := c.Keys.Get(n)
 	if key == "" {
+		if provider.Keyless(name) && n != keys.SearXNG {
+			return "", nil
+		}
 		if n == keys.SearXNG {
 			return "", fmt.Errorf("no SearXNG URL configured: run `smart_search setup` or set %s", n.EnvVar())
 		}
@@ -214,7 +218,8 @@ func (c *Config) JevKey() (string, error) {
 // one-element chain (validated later by ProviderKey). Otherwise the preferred
 // provider from config comes first (an error if it is unusable, since the
 // user asked for it), then every keyed provider with a key in Names order,
-// then the keyless fallbacks: ddg always, searxng when its URL is set.
+// then the keyless fallbacks: exa and parallel over their hosted MCP servers,
+// ddg, and searxng when its URL is set.
 func (c *Config) Chain(explicit string) ([]string, error) {
 	if explicit = provider.Normalize(explicit); explicit != "" {
 		return []string{explicit}, nil
@@ -235,10 +240,12 @@ func (c *Config) Chain(explicit string) ([]string, error) {
 		add(pref)
 	}
 	for _, name := range provider.Keyed() {
-		if c.Usable(name) {
+		if c.Keys.Get(keys.Name(name)) != "" {
 			add(name)
 		}
 	}
+	add("exa")
+	add("parallel")
 	add("ddg")
 	if c.Usable("searxng") {
 		add("searxng")

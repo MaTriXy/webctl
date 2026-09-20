@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const ddgHTML = `<!DOCTYPE html><html><body>
@@ -165,9 +166,42 @@ func TestNewKeyless(t *testing.T) {
 			t.Errorf("Keyless(%q) = false", name)
 		}
 	}
-	for _, name := range Keyed() {
-		if Keyless(name) {
-			t.Errorf("Keyless(%q) = true", name)
+	// Exa and Parallel are keyed but still usable keyless via MCP.
+	if Keyless("sonar") || !Keyless("exa") || !Keyless("parallel") {
+		t.Error("Keyless mismatch for sonar/exa/parallel")
+	}
+}
+
+func TestDDGRetriesAcceptedAndKeepsCookies(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if hits < 3 {
+			http.SetCookie(w, &http.Cookie{Name: "kl", Value: "wt-wt", Path: "/"})
+			w.WriteHeader(http.StatusAccepted)
+			return
 		}
+		if c, err := r.Cookie("kl"); err != nil || c.Value != "wt-wt" {
+			t.Errorf("cookie from the 202 not sent back: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, `<div class="result"><a class="result__a" href="https://a.example">A</a><a class="result__snippet">s</a></div>`)
+	}))
+	t.Cleanup(srv.Close)
+	d := NewDDG(Options{BaseURL: srv.URL})
+	d.sleep = func(context.Context, time.Duration) error { return nil }
+	got, err := d.Search(context.Background(), "q", 5)
+	if err != nil || len(got) != 1 || hits != 3 {
+		t.Errorf("got %v, err %v, hits %d", got, err, hits)
+	}
+
+	// Persistent 202s end as an APIError, not a hang.
+	hits = 0
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusAccepted) }))
+	t.Cleanup(srv2.Close)
+	d = NewDDG(Options{BaseURL: srv2.URL})
+	d.sleep = func(context.Context, time.Duration) error { return nil }
+	if _, err := d.Search(context.Background(), "q", 5); err == nil {
+		t.Error("expected error after retries")
 	}
 }

@@ -1,3 +1,4 @@
 /smart_search
 /dist/
 *.local
+/probe/

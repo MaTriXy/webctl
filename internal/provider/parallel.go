@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -10,25 +11,38 @@ import (
 // ParallelBaseURL is the default Parallel API root.
 const ParallelBaseURL = "https://api.parallel.ai"
 
-// Parallel searches via https://parallel.ai.
+// ParallelMCPURL is Parallel's hosted Search MCP server, usable without a key.
+const ParallelMCPURL = "https://search.parallel.ai/mcp"
+
+// Parallel searches via https://parallel.ai: the REST API with a key, the
+// hosted MCP server without one.
 type Parallel struct {
 	apiKey  string
 	baseURL string
+	mcpURL  string
 	client  *http.Client
 }
 
-// NewParallel constructs a Parallel provider.
+// NewParallel constructs a Parallel provider. An empty apiKey selects the
+// keyless MCP endpoint; opts.BaseURL then overrides it as <BaseURL>/mcp.
 func NewParallel(apiKey string, opts Options) *Parallel {
 	base := opts.BaseURL
+	mcp := ParallelMCPURL
 	if base == "" {
 		base = ParallelBaseURL
+	} else {
+		mcp = strings.TrimRight(base, "/") + "/mcp"
 	}
 	return &Parallel{
 		apiKey:  apiKey,
 		baseURL: strings.TrimRight(base, "/"),
+		mcpURL:  mcp,
 		client:  newHTTPClient(opts, DefaultTimeout),
 	}
 }
+
+// Keyless reports whether this instance uses the MCP endpoint.
+func (p *Parallel) Keyless() bool { return p.apiKey == "" }
 
 // Name implements Provider.
 func (p *Parallel) Name() string { return "parallel" }
@@ -54,6 +68,9 @@ type parallelResponse struct {
 
 // Search implements Provider.
 func (p *Parallel) Search(ctx context.Context, query string, numResults int) ([]SearchResult, error) {
+	if p.Keyless() {
+		return p.searchMCP(ctx, query, numResults)
+	}
 	req := parallelRequest{Query: query, MaxResults: clampNum(numResults, 100)}
 	var resp parallelResponse
 	if err := postJSON(ctx, p.client, "Parallel", p.baseURL+"/v1/search", p.headers(), req, &resp); err != nil {
@@ -61,24 +78,71 @@ func (p *Parallel) Search(ctx context.Context, query string, numResults int) ([]
 	}
 	out := make([]SearchResult, 0, len(resp.Results))
 	for _, r := range resp.Results {
-		snippet := r.Snippet
-		if snippet == "" {
-			snippet = strings.Join(r.Excerpts, " ")
+		if sr, ok := toSearchResult(r); ok {
+			out = append(out, sr)
 		}
-		if snippet == "" {
-			snippet = r.Description
-		}
-		out = append(out, SearchResult{
-			Title:   strings.TrimSpace(r.Title),
-			URL:     strings.TrimSpace(r.URL),
-			Snippet: truncate(collapseWhitespace(snippet), 600),
-		})
 	}
 	return out, nil
 }
 
+// searchMCP calls the web_search tool. Each text block is a JSON object with
+// the same result shape as the REST API. The tool takes no result limit, so
+// it is applied locally.
+func (p *Parallel) searchMCP(ctx context.Context, query string, numResults int) ([]SearchResult, error) {
+	texts, err := callMCPTool(ctx, p.client, "Parallel", p.mcpURL, "web_search", map[string]any{
+		"objective":      query,
+		"search_queries": []string{query},
+	})
+	if err != nil {
+		return nil, err
+	}
+	limit := clampNum(numResults, 100)
+	var out []SearchResult
+	for _, t := range texts {
+		var payload parallelResponse
+		if err := json.Unmarshal([]byte(t), &payload); err != nil {
+			return nil, fmt.Errorf("Parallel: decode results: %w", err)
+		}
+		for _, r := range payload.Results {
+			if len(out) >= limit {
+				return out, nil
+			}
+			if sr, ok := toSearchResult(r); ok {
+				out = append(out, sr)
+			}
+		}
+	}
+	return out, nil
+}
+
+// toSearchResult maps one Parallel result, dropping ones without a title or URL.
+func toSearchResult(r parallelResult) (SearchResult, bool) {
+	title, url := strings.TrimSpace(r.Title), strings.TrimSpace(r.URL)
+	if title == "" || url == "" {
+		return SearchResult{}, false
+	}
+	content := strings.TrimSpace(strings.Join(r.Excerpts, "\n"))
+	snippet := r.Snippet
+	if snippet == "" {
+		snippet = content
+	}
+	if snippet == "" {
+		snippet = r.Description
+	}
+	return SearchResult{
+		Title:   collapseWhitespace(title),
+		URL:     url,
+		Snippet: truncate(collapseWhitespace(snippet), 600),
+		Content: content,
+	}, true
+}
+
 // Validate implements Provider with a one-result hello-world search.
 func (p *Parallel) Validate(ctx context.Context) error {
+	if p.Keyless() {
+		_, err := p.searchMCP(ctx, "hello world", 1)
+		return err
+	}
 	req := parallelRequest{Query: "hello world", MaxResults: 1}
 	return postJSON(ctx, p.client, "Parallel", p.baseURL+"/v1/search", p.headers(), req, nil)
 }

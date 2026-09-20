@@ -17,6 +17,11 @@ type SearchResult struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
+	// Content is the provider's full excerpt text when it returns more than
+	// a snippet (the keyless Exa and Parallel MCP backends do). It is not
+	// sent to Jev for qualification; it stands in for a page that cannot
+	// be fetched.
+	Content string `json:"content,omitempty"`
 }
 
 // Provider is a web search backend.
@@ -65,16 +70,18 @@ func Normalize(name string) string {
 }
 
 // Keyless reports whether the named provider works without an API key.
+// Exa and Parallel fall back to their hosted MCP endpoints without one.
 func Keyless(name string) bool {
 	switch Normalize(name) {
-	case "ddg", "searxng":
+	case "ddg", "searxng", "exa", "parallel":
 		return true
 	}
 	return false
 }
 
 // New constructs the named provider. cred is the API key for keyed providers
-// and the instance URL for searxng; ddg ignores it.
+// and the instance URL for searxng; ddg ignores it. Exa and Parallel accept
+// an empty cred and use their keyless MCP endpoints.
 func New(name, cred string, opts Options) (Provider, error) {
 	switch Normalize(name) {
 	case "ddg":
@@ -84,15 +91,15 @@ func New(name, cred string, opts Options) (Provider, error) {
 			return nil, errors.New("searxng: instance URL is empty")
 		}
 		return NewSearXNG(cred, opts), nil
+	case "exa":
+		return NewExa(cred, opts), nil
+	case "parallel":
+		return NewParallel(cred, opts), nil
 	}
 	if cred == "" {
 		return nil, fmt.Errorf("%s: API key is empty", name)
 	}
 	switch Normalize(name) {
-	case "exa":
-		return NewExa(cred, opts), nil
-	case "parallel":
-		return NewParallel(cred, opts), nil
 	case "sonar":
 		return NewSonar(cred, opts), nil
 	}

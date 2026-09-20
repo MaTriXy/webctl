@@ -9,11 +9,13 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/dorkitude/smart_search/internal/config"
+	version_ "github.com/dorkitude/smart_search/internal/version"
 )
 
 var (
-	// version is set at build time via -ldflags "-X .../cli.version=v1.2.3".
-	version = "dev"
+	// version is set at build time via -ldflags "-X .../cli.version=v1.2.3";
+	// otherwise the behavior version is reported.
+	version = version_.Version
 
 	// configDir overrides ~/smart_search when set via --config-dir.
 	configDir string

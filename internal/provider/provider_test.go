@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -76,8 +77,11 @@ func TestNew(t *testing.T) {
 	if _, err := New("bing", "k", Options{}); err == nil || !strings.Contains(err.Error(), "unknown provider") {
 		t.Errorf("unknown provider error = %v", err)
 	}
-	if _, err := New("exa", "", Options{}); err == nil || !strings.Contains(err.Error(), "empty") {
+	if _, err := New("sonar", "", Options{}); err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Errorf("empty key error = %v", err)
+	}
+	if p, err := New("exa", "", Options{}); err != nil || !p.(*Exa).Keyless() {
+		t.Errorf("keyless exa = %v, %v", p, err)
 	}
 }
 
@@ -165,8 +169,8 @@ func TestParallelSearch(t *testing.T) {
 	}
 	want := []SearchResult{
 		{Title: "One", URL: "https://one.example", Snippet: "snip"},
-		{Title: "Two", URL: "https://two.example", Snippet: "ex a ex b"},
-		{Title: "Three", URL: "https://three.example", Snippet: "single excerpt"},
+		{Title: "Two", URL: "https://two.example", Snippet: "ex a ex b", Content: "ex a\nex b"},
+		{Title: "Three", URL: "https://three.example", Snippet: "single excerpt", Content: "single excerpt"},
 		{Title: "Four", URL: "https://four.example", Snippet: "desc"},
 	}
 	assertResults(t, got, want)
@@ -374,5 +378,99 @@ func assertResults(t *testing.T, got, want []SearchResult) {
 		if got[i] != want[i] {
 			t.Errorf("result[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestExaKeylessMCP(t *testing.T) {
+	text := "Title: First Result\nURL: https://one.example\nPublished: 2024-01-01\nHighlights:\n- First line of body.\n- Second line.\n...\n\nTitle: Second\nURL: https://two.example\nAuthor: someone\nBody two.\n---\nTitle: no url\nBody"
+	payload := map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": text}}}}
+	raw, _ := json.Marshal(payload)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/mcp" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		params := body["params"].(map[string]any)
+		if params["name"] != "web_search_exa" || params["arguments"].(map[string]any)["numResults"] != float64(5) {
+			t.Errorf("params = %v", params)
+		}
+		// Exa answers as a single-frame event stream.
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: message\ndata: %s\n\n", raw)
+	}))
+	t.Cleanup(srv.Close)
+	p := NewExa("", Options{BaseURL: srv.URL})
+	got, err := p.Search(context.Background(), "q", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []SearchResult{
+		{Title: "First Result", URL: "https://one.example", Snippet: "First line of body. Second line.", Content: "First line of body.\nSecond line."},
+		{Title: "Second", URL: "https://two.example", Snippet: "Body two.", Content: "Body two."},
+	}
+	assertResults(t, got, want)
+}
+
+func TestParallelKeylessMCP(t *testing.T) {
+	inner := `{"results":[{"url":"https://a.example","title":"A  title","excerpts":["one","two"]},{"url":"https://b.example","title":"B","excerpts":[]},{"url":"","title":"skip"}]}`
+	payload := map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": inner}}}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["params"].(map[string]any)["name"] != "web_search" {
+			t.Errorf("params = %v", body["params"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	t.Cleanup(srv.Close)
+	p := NewParallel("", Options{BaseURL: srv.URL})
+	got, err := p.Search(context.Background(), "q", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []SearchResult{{Title: "A title", URL: "https://a.example", Snippet: "one two", Content: "one\ntwo"}}
+	assertResults(t, got, want)
+}
+
+func TestMCPErrors(t *testing.T) {
+	cases := map[string]string{
+		"rpc error":  `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"quota exceeded"}}`,
+		"tool error": `{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[{"type":"text","text":"rate limited"}]}}`,
+		"empty":      `{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`,
+	}
+	for name, body := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, body)
+		}))
+		p := NewExa("", Options{BaseURL: srv.URL})
+		_, err := p.Search(context.Background(), "q", 1)
+		srv.Close()
+		if err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(429) }))
+	t.Cleanup(srv.Close)
+	_, err := NewParallel("", Options{BaseURL: srv.URL}).Search(context.Background(), "q", 1)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != 429 {
+		t.Errorf("429 err = %v", err)
+	}
+}
+
+func TestExaKeylessRateLimitNotice(t *testing.T) {
+	body := `{"result":{"_meta":{"ai.exa/rateLimited":true},"content":[{"type":"text","text":"You've hit Exa's free MCP rate limit. Create an API key."}]},"jsonrpc":"2.0","id":1}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	_, err := NewExa("", Options{BaseURL: srv.URL}).Search(context.Background(), "q", 3)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != 429 || !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("err = %v", err)
 	}
 }

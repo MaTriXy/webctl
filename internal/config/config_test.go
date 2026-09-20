@@ -210,6 +210,10 @@ func TestProviderKey(t *testing.T) {
 	if !cfg.Usable("ddg") || !cfg.Usable("exa") || !cfg.Usable("searxng") || cfg.Usable("sonar") || cfg.Usable("bing") {
 		t.Error("Usable mismatch")
 	}
+	// Exa and Parallel are usable keyless; Sonar is not.
+	if k, err := (&Config{Keys: &keys.Store{}}).ProviderKey("parallel"); err != nil || k != "" {
+		t.Errorf("keyless parallel = %q, %v", k, err)
+	}
 }
 
 func TestLoadSearXNGURLFromConfigYAML(t *testing.T) {
@@ -258,11 +262,11 @@ func TestChain(t *testing.T) {
 		{"explicit even without key", Config{Provider: "exa", Keys: &keys.Store{}}, "parallel", []string{"parallel"}, false},
 		{"explicit alias", Config{Keys: &keys.Store{}}, "DuckDuckGo", []string{"ddg"}, false},
 		{"preferred first, then keyed in order, then ddg", Config{Provider: "sonar", Keys: &keys.Store{ParallelAPIKey: "p", ExaAPIKey: "e", SonarAPIKey: "s"}}, "", []string{"sonar", "exa", "parallel", "ddg"}, false},
-		{"preferred without key is an error", Config{Provider: "exa", Keys: &keys.Store{SonarAPIKey: "s"}}, "", nil, true},
-		{"no keys falls to ddg", Config{Keys: &keys.Store{}}, "", []string{"ddg"}, false},
-		{"searxng after ddg when configured", Config{Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"exa", "ddg", "searxng"}, false},
-		{"preferred keyless", Config{Provider: "searxng", Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa", "ddg"}, false},
-		{"preferred ddg", Config{Provider: "ddg", Keys: &keys.Store{ExaAPIKey: "e"}}, "", []string{"ddg", "exa"}, false},
+		{"preferred without key is an error", Config{Provider: "sonar", Keys: &keys.Store{ExaAPIKey: "e"}}, "", nil, true},
+		{"no keys: keyless exa, parallel, then ddg", Config{Keys: &keys.Store{}}, "", []string{"exa", "parallel", "ddg"}, false},
+		{"searxng after ddg when configured", Config{Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"exa", "parallel", "ddg", "searxng"}, false},
+		{"preferred keyless", Config{Provider: "searxng", Keys: &keys.Store{SearXNGURL: "http://sx", ExaAPIKey: "e"}}, "", []string{"searxng", "exa", "parallel", "ddg"}, false},
+		{"preferred ddg", Config{Provider: "ddg", Keys: &keys.Store{ExaAPIKey: "e"}}, "", []string{"ddg", "exa", "parallel"}, false},
 	}
 	for _, tc := range cases {
 		got, err := tc.cfg.Chain(tc.explicit)

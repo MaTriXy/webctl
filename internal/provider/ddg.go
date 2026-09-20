@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -19,11 +21,21 @@ const DDGBaseURL = "https://html.duckduckgo.com"
 // browsers and answers bare library UAs with a bot check.
 const ddgUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
+// ddgRetries is how many times a 202 (DuckDuckGo's "slow down" answer) is
+// retried before giving up; ddgRetryWait is the pause between tries.
+const (
+	ddgRetries   = 3
+	ddgRetryWait = 500 * time.Millisecond
+)
+
 // DDG scrapes DuckDuckGo's HTML endpoint. It needs no API key, so it is the
-// fallback of last resort in the auto provider chain.
+// fallback of last resort in the auto provider chain. The client keeps a
+// cookie jar so the session DuckDuckGo hands a browser is sent back, and a
+// 202 is retried a few times.
 type DDG struct {
 	baseURL string
 	client  *http.Client
+	sleep   func(context.Context, time.Duration) error
 }
 
 // NewDDG constructs a DuckDuckGo provider.
@@ -32,9 +44,22 @@ func NewDDG(opts Options) *DDG {
 	if base == "" {
 		base = DDGBaseURL
 	}
-	return &DDG{
-		baseURL: strings.TrimRight(base, "/"),
-		client:  newHTTPClient(opts, DefaultTimeout),
+	client := newHTTPClient(opts, DefaultTimeout)
+	if client.Jar == nil {
+		client.Jar, _ = cookiejar.New(nil)
+	}
+	return &DDG{baseURL: strings.TrimRight(base, "/"), client: client, sleep: sleepCtx}
+}
+
+// sleepCtx waits d or until ctx is done.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
 }
 
@@ -45,21 +70,9 @@ func (d *DDG) Name() string { return "ddg" }
 // result list out of the returned HTML.
 func (d *DDG) Search(ctx context.Context, query string, numResults int) ([]SearchResult, error) {
 	n := clampNum(numResults, 50)
-	form := url.Values{"q": {query}, "b": {""}, "kl": {""}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.baseURL+"/html/", strings.NewReader(form.Encode()))
+	resp, err := d.fetch(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("DuckDuckGo: build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "text/html")
-	req.Header.Set("User-Agent", ddgUserAgent)
-
-	resp, err := d.client.Do(req)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("DuckDuckGo: request timed out: %w", err)
-		}
-		return nil, fmt.Errorf("DuckDuckGo: request failed: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -82,6 +95,37 @@ func (d *DDG) Search(ctx context.Context, query string, numResults int) ([]Searc
 		results = results[:n]
 	}
 	return results, nil
+}
+
+// fetch POSTs the query, retrying a 202 up to ddgRetries times. Any other
+// response, including errors, is returned as is.
+func (d *DDG) fetch(ctx context.Context, query string) (*http.Response, error) {
+	form := url.Values{"q": {query}, "b": {""}, "kl": {""}}
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.baseURL+"/html/", strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, fmt.Errorf("DuckDuckGo: build request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("User-Agent", ddgUserAgent)
+
+		resp, err := d.client.Do(req)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("DuckDuckGo: request timed out: %w", err)
+			}
+			return nil, fmt.Errorf("DuckDuckGo: request failed: %w", err)
+		}
+		if resp.StatusCode != http.StatusAccepted || attempt+1 >= ddgRetries {
+			return resp, nil
+		}
+		resp.Body.Close()
+		if err := d.sleep(ctx, ddgRetryWait); err != nil {
+			return nil, fmt.Errorf("DuckDuckGo: rate limited: %w", err)
+		}
+	}
 }
 
 // Validate implements Provider with a one-word search.

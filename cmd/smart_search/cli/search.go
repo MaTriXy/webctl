@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -43,7 +44,7 @@ var sf searchFlags
 
 func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, sonar, ddg, or searxng (default: auto — keyed providers with a key, then ddg, then searxng)")
+	f.StringVarP(&sf.provider, "provider", "p", "", "search provider: exa, parallel, sonar, ddg, or searxng (default: auto — keyed providers with a key, then keyless exa and parallel, then ddg, then searxng)")
 	f.IntVarP(&sf.num, "num", "n", 0, "number of results to request from the provider (default 10)")
 	f.Float64VarP(&sf.minScore, "min-score", "m", -1, "minimum Jev relevance score to keep a result (default 1.0; with --noul, minimum P(yes), default 0.5)")
 	f.BoolVar(&sf.jsonOut, "json", false, "emit results as JSON")
@@ -507,21 +508,43 @@ func searchMulti(ctx context.Context, cfg *config.Config, chain []string, query 
 	return strings.Join(names, "+"), results, engines, nil
 }
 
+// Chain timing: one provider attempt is bounded by attemptTimeout so a hung
+// backend cannot eat the whole run, and the chain as a whole by chainBudget
+// so a run of slow failures still ends promptly. Tests shorten both.
+var (
+	attemptTimeout = 12 * time.Second
+	chainBudget    = 30 * time.Second
+)
+
 // searchChain tries each provider in order and returns the first successful
 // search. Failures are reported to errOut as the chain falls through; if every
 // provider fails, the joined errors are returned.
 func searchChain(ctx context.Context, cfg *config.Config, chain []string, query string, num int, errOut io.Writer) (string, []provider.SearchResult, error) {
+	chainCtx, cancelChain := context.WithTimeout(ctx, chainBudget)
+	defer cancelChain()
 	var errs []error
 	for i, name := range chain {
 		p, err := newProvider(cfg, name)
 		if err == nil {
 			var results []provider.SearchResult
-			if results, err = p.Search(ctx, query, num); err == nil {
+			attemptCtx, cancel := context.WithTimeout(chainCtx, attemptTimeout)
+			results, err = p.Search(attemptCtx, query, num)
+			cancel()
+			// An empty answer from a keyless tier usually means it is
+			// throttled, so it only counts when no provider is left.
+			if err == nil && (len(results) > 0 || i+1 == len(chain)) {
 				return p.Name(), results, nil
+			}
+			if err == nil {
+				err = errors.New("no results")
 			}
 		}
 		errs = append(errs, err)
 		if ctx.Err() != nil {
+			break
+		}
+		if chainCtx.Err() != nil {
+			errs = append(errs, fmt.Errorf("chain budget of %s exhausted", chainBudget))
 			break
 		}
 		if i+1 < len(chain) {

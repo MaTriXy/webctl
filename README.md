@@ -21,7 +21,7 @@ go install github.com/dorkitude/smart_search/cmd/smart_search@latest
 smart_search "latest advances in mechanistic interpretability"
 ```
 
-Zero config: with no keys, `ddg` (DuckDuckGo) is used. Add a Jev key to enable filtering, and search API keys for better backends:
+Zero config: with no keys, Exa and Parallel are used over their keyless endpoints, with DuckDuckGo as a last resort. Add a Jev key to enable filtering, and search API keys to lift rate limits:
 
 ```bash
 smart_search setup        # interactive; keys stored in ~/secrets/keys.json (0600)
@@ -30,7 +30,7 @@ smart_search setup        # interactive; keys stored in ~/secrets/keys.json (060
 | Setting | Env var | Needed for |
 |---|---|---|
 | Jev key | `JEV_API_KEY` | relevance filtering, `--filter-chunks` |
-| Exa / Parallel / Sonar key | `EXA_API_KEY`, `PARALLEL_API_KEY`, `SONAR_API_KEY` | keyed backends |
+| Exa / Parallel / Sonar key | `EXA_API_KEY`, `PARALLEL_API_KEY`, `SONAR_API_KEY` | keyed backends (Exa and Parallel also work without one) |
 | SearXNG URL | `SEARXNG_URL` | self-hosted metasearch |
 
 The keys file may be shared with other tools; unknown fields are preserved. Point elsewhere with `--keys-file`, `SMART_SEARCH_KEYS_FILE`, or `keys_file` in `~/smart_search/config.yaml`.
@@ -39,7 +39,7 @@ Without a Jev key, pass `--no-filter` to get raw results.
 
 ## Backends
 
-With no `--provider`, backends are tried in order until one succeeds: configured keyed providers (exa, parallel, sonar), then `ddg`, then `searxng`.
+With no `--provider`, backends are tried in order until one succeeds: configured keyed providers (exa, parallel, sonar), then Exa and Parallel over their keyless hosted MCP endpoints, then `ddg`, then `searxng`. Each attempt is capped at 12s and the whole chain at 30s. Exa and Parallel return page excerpts with each result; those stand in for pages that cannot be scraped.
 
 ```bash
 smart_search -p exa "transformer circuits"   # pick one
