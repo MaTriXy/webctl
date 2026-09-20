@@ -65,6 +65,8 @@ smart_search --scrape --max-chars 20000 "q"  # cap content per page (default 500
 
 `--filter-chunks` splits each page into ~2000-char chunks, asks Jev about all of them in one batch request, and reassembles the survivors. A 50K-char page often shrinks to a few K of signal.
 
+Reddit: `www.reddit.com` answers a plain GET with a JavaScript challenge page (HTTP 200, no content). The scraper solves it (the script's answer is the challenge token doubled), refetches with the resulting cookies, and reuses those cookies for the rest of the run. Comments ship inside a `<template>` element, which is read like any other block. Threads come back with post body and comments; a hard bot wall (HTTP 403, "Prove your humanity") is reported as an error.
+
 ## Output
 
 ```bash

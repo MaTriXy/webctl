@@ -2,12 +2,15 @@
 package scrape
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -27,10 +30,15 @@ const (
 
 // Fetcher downloads pages and extracts their text.
 type Fetcher struct {
-	// Client defaults to one with DefaultTimeout.
+	// Client defaults to one with DefaultTimeout and a cookie jar, so
+	// cookies set by one fetch (e.g. after a Reddit challenge) apply to
+	// the rest. A caller-supplied Client keeps its own Jar, if any.
 	Client *http.Client
 	// MaxChars caps the extracted text per page (runes). ≤0 means DefaultMaxChars.
 	MaxChars int
+
+	once          sync.Once
+	defaultClient *http.Client
 }
 
 // Page is the outcome of fetching one URL.
@@ -44,7 +52,11 @@ func (f *Fetcher) client() *http.Client {
 	if f.Client != nil {
 		return f.Client
 	}
-	return &http.Client{Timeout: DefaultTimeout}
+	f.once.Do(func() {
+		jar, _ := cookiejar.New(nil) // only errors on a bad PublicSuffixList; nil is fine
+		f.defaultClient = &http.Client{Timeout: DefaultTimeout, Jar: jar}
+	})
+	return f.defaultClient
 }
 
 func (f *Fetcher) maxChars() int {
@@ -56,41 +68,31 @@ func (f *Fetcher) maxChars() int {
 
 // Fetch downloads url and returns its text content, truncated to MaxChars.
 // HTML is converted to text; plain text is passed through; other content
-// types are rejected.
+// types are rejected. A Reddit challenge page is solved and the real page
+// fetched in its place.
 func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	mediaType, body, err := f.get(ctx, url)
 	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
+		return "", err
 	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
-
-	resp, err := f.client().Do(req)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return "", fmt.Errorf("timed out: %w", err)
+	if isHTML(mediaType) && isRedditChallenge(body) {
+		u, err := f.solveURL(url, body)
+		if err != nil {
+			return "", err
 		}
-		return "", fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+		if mediaType, body, err = f.get(ctx, u); err != nil {
+			return "", err
+		}
 	}
 
-	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	body := io.LimitReader(resp.Body, maxBodyBytes)
 	var text string
 	switch {
-	case mediaType == "" || strings.Contains(mediaType, "html") || strings.Contains(mediaType, "xml"):
-		if text, err = HTMLToText(body); err != nil {
+	case isHTML(mediaType):
+		if text, err = HTMLToText(bytes.NewReader(body)); err != nil {
 			return "", err
 		}
 	case strings.HasPrefix(mediaType, "text/"), mediaType == "application/json":
-		raw, err := io.ReadAll(body)
-		if err != nil {
-			return "", fmt.Errorf("read body: %w", err)
-		}
-		text = normalizeText(string(raw))
+		text = normalizeText(string(body))
 	default:
 		return "", fmt.Errorf("unsupported content type %q", mediaType)
 	}
@@ -98,6 +100,49 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", errors.New("no text content")
 	}
 	return Truncate(text, f.maxChars()), nil
+}
+
+// get performs one GET and returns the response media type and body
+// (capped at maxBodyBytes). Non-2xx statuses are errors.
+func (f *Fetcher) get(ctx context.Context, url string) (string, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
+
+	resp, err := f.client().Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", nil, fmt.Errorf("timed out: %w", err)
+		}
+		return "", nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	if err != nil {
+		return "", nil, fmt.Errorf("read body: %w", err)
+	}
+	return mediaType, body, nil
+}
+
+// solveURL turns a challenge page fetched from rawURL into the URL to fetch
+// instead.
+func (f *Fetcher) solveURL(rawURL string, body []byte) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse url: %w", err)
+	}
+	return solveRedditChallenge(u, body)
+}
+
+func isHTML(mediaType string) bool {
+	return mediaType == "" || strings.Contains(mediaType, "html") || strings.Contains(mediaType, "xml")
 }
 
 // FetchAll fetches every URL with bounded concurrency. The returned slice is
@@ -125,7 +170,7 @@ func (f *Fetcher) FetchAll(ctx context.Context, urls []string, concurrency int) 
 
 // skipElements are dropped along with their contents.
 var skipElements = map[string]bool{
-	"script": true, "style": true, "noscript": true, "template": true, "head": true,
+	"script": true, "style": true, "noscript": true, "head": true,
 	"svg": true, "iframe": true, "canvas": true, "object": true, "embed": true,
 }
 
@@ -133,7 +178,7 @@ var skipElements = map[string]bool{
 var blockElements = map[string]bool{
 	"address": true, "article": true, "aside": true, "blockquote": true, "br": true,
 	"dd": true, "details": true, "dialog": true, "div": true, "dl": true, "dt": true,
-	"fieldset": true, "figcaption": true, "figure": true, "footer": true, "form": true,
+	"fieldset": true, "figcaption": true, "figure": true, "footer": true, "form": true, "template": true,
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
 	"header": true, "hr": true, "li": true, "main": true, "nav": true, "ol": true,
 	"p": true, "pre": true, "section": true, "table": true, "tbody": true, "td": true,
