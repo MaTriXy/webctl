@@ -132,7 +132,7 @@ func toSearchResult(r parallelResult) (SearchResult, bool) {
 	return SearchResult{
 		Title:   collapseWhitespace(title),
 		URL:     url,
-		Snippet: truncate(collapseWhitespace(snippet), 600),
+		Snippet: excerpt(snippet),
 		Content: content,
 	}, true
 }

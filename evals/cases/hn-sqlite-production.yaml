@@ -5,7 +5,9 @@ tags: [hackernews, engineering]
 scrape: true
 expected_domains: [news.ycombinator.com]
 # Hand-labelled from observed raw results (content farms, affiliate sites, movers, tour sellers).
-junk_domains: [sqlagent.app, buzzkorean.com, sesamedisk.com, queryplane.com, mvpfactory.io, prodsens.live, ultrathink.art, raxxo.shop]
+# raxxo.shop, ultrathink.art, prodsens.live and 0x.run were dropped from this list: their
+# snippets are first-hand engineering posts with specific numbers, whatever the domain looks like.
+junk_domains: [sqlagent.app, buzzkorean.com, sesamedisk.com, queryplane.com, mvpfactory.io]
 expected_themes:
   - write concurrency or single-writer limits of SQLite
   - WAL mode, Litestream, or backup/replication approaches

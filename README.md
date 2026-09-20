@@ -85,7 +85,11 @@ smart_search -n 20 "q"                   # results to request
 ```bash
 smart_search keys list|set|unset|validate   # non-interactive key management
 smart_search eval                           # run the eval suite (live calls; see evals/README.md)
+smart_search eval report --cases            # Markdown tables from evals/results.db, per version
+smart_search --version                      # behavior version; bumped when results would change
 ```
+
+Eval outcomes, including filter vs. no-filter numbers, are in [docs/EVAL_REPORT.md](docs/EVAL_REPORT.md).
 
 ## License
 

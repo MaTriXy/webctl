@@ -112,7 +112,7 @@ func TestExaSearch(t *testing.T) {
 	want := []SearchResult{
 		{Title: "Attention Is All You Need", URL: "https://arxiv.org/abs/1706.03762", Snippet: "We propose the Transformer. It works."},
 		{Title: "No highlights", URL: "https://example.com/a", Snippet: "A summary"},
-		{Title: "Text only", URL: "https://example.com/b", Snippet: "Body text"},
+		{Title: "Text only", URL: "https://example.com/b", Snippet: "Body text", Content: "Body text"},
 	}
 	assertResults(t, got, want)
 }

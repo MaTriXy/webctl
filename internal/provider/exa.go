@@ -90,7 +90,7 @@ func (e *Exa) Search(ctx context.Context, query string, numResults int) ([]Searc
 	}
 	out := make([]SearchResult, 0, len(resp.Results))
 	for _, r := range resp.Results {
-		snippet := strings.Join(r.Highlights, " ")
+		snippet := strings.Join(r.Highlights, "\n")
 		if snippet == "" {
 			snippet = r.Summary
 		}
@@ -100,7 +100,8 @@ func (e *Exa) Search(ctx context.Context, query string, numResults int) ([]Searc
 		out = append(out, SearchResult{
 			Title:   strings.TrimSpace(r.Title),
 			URL:     strings.TrimSpace(r.URL),
-			Snippet: truncate(collapseWhitespace(snippet), 600),
+			Snippet: excerpt(snippet),
+			Content: strings.TrimSpace(r.Text),
 		})
 	}
 	return out, nil
@@ -141,7 +142,7 @@ func parseExaText(text string) []SearchResult {
 	flush := func() {
 		if cur != nil && cur.Title != "" && cur.URL != "" {
 			cur.Content = strings.Join(body, "\n")
-			cur.Snippet = truncate(collapseWhitespace(cur.Content), 600)
+			cur.Snippet = excerpt(cur.Content)
 			out = append(out, *cur)
 		}
 		cur, body = nil, nil

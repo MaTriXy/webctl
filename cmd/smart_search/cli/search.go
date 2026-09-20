@@ -729,7 +729,7 @@ func (r *rawResult) fillPage() {
 func toRaw(results []provider.SearchResult, engines map[string][]string) []rawResult {
 	out := make([]rawResult, 0, len(results))
 	for _, r := range results {
-		out = append(out, rawResult{SearchResult: r, Engines: engines[r.URL]})
+		out = append(out, rawResult{SearchResult: r, Engines: engines[r.URL], Content: r.Content})
 	}
 	return out
 }
