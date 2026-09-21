@@ -72,6 +72,26 @@ var settings = []setting{
 	{"jev.model", "Jev model name", nonEmpty},
 	{"searxng_url", "SearXNG instance URL (keys.json's searxng_url wins when set)", func(v string) (any, error) { return strings.TrimRight(strings.TrimSpace(v), "/"), nil }},
 	{"keys_file", "path of the keys file (default ~/secrets/keys.json)", func(v string) (any, error) { return strings.TrimSpace(v), nil }},
+	{"summarize.command", "shell command that reads a prompt on stdin and prints a summary (--summarize)", func(v string) (any, error) { return strings.TrimSpace(v), nil }},
+	{"summarize.endpoint", "OpenAI-compatible base URL for --summarize (used when summarize.command is empty)", func(v string) (any, error) { return strings.TrimRight(strings.TrimSpace(v), "/"), nil }},
+	{"summarize.model", "model name sent to summarize.endpoint", func(v string) (any, error) { return strings.TrimSpace(v), nil }},
+	{"summarize.api_key", "bearer token for summarize.endpoint (prefer summarize.api_key_env)", func(v string) (any, error) { return strings.TrimSpace(v), nil }},
+	{"summarize.api_key_env", "environment variable holding the endpoint key (default by host: FIREWORKS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY)", func(v string) (any, error) { return strings.TrimSpace(v), nil }},
+	{"summarize.max_tokens", "summary length cap at the endpoint", func(v string) (any, error) {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("summarize.max_tokens must be a positive integer, got %q", v)
+		}
+		return n, nil
+	}},
+	{"summarize.reasoning_effort", "reasoning_effort sent to the endpoint (none turns thinking off; empty omits it)", func(v string) (any, error) { return strings.TrimSpace(v), nil }},
+	{"summarize.timeout", "per-page timeout for the summarizer, e.g. 60s", func(v string) (any, error) {
+		d, err := time.ParseDuration(strings.TrimSpace(v))
+		if err != nil || d <= 0 {
+			return nil, fmt.Errorf("summarize.timeout must be a positive duration, got %q", v)
+		}
+		return d.String(), nil
+	}},
 	{"cooldown.enabled", "skip providers after a 429/402 (true/false)", func(v string) (any, error) {
 		b, err := strconv.ParseBool(v)
 		if err != nil {

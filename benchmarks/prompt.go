@@ -34,6 +34,16 @@ Usage:
 Always pass --goal. Do not pass --scrape or --filter-chunks: work from the titles, URLs, and snippets webctl returns. Run at most 4 webctl commands.
 
 `)
+	case ModeWebctlSummarize:
+		b.WriteString(`Tools: you have the command-line tool webctl on PATH, and it is the ONLY way you may reach the web. Do not use any built-in web search or fetch tool, and do not run curl, wget, or any command other than webctl.
+
+Usage:
+  webctl search "<search-engine style query>" --goal "<what you actually need, in plain words>"
+  webctl search "<query>" --goal "<goal>" --scrape --filter-chunks --summarize   # also returns a short summary of each relevant page
+
+Always pass --goal. The snippets are usually enough; add --scrape --filter-chunks --summarize whenever you would otherwise read a whole page, since it returns a short summary of what each page says about the goal. Run at most 4 webctl commands.
+
+`)
 	case ModeNative:
 		b.WriteString(`Tools: use your built-in web search and web fetch tools, and nothing else. Do not run shell commands. Run at most 4 searches/fetches.
 

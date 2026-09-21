@@ -23,12 +23,17 @@ const (
 	// ModeWebctlLite: webctl only, and never --scrape: results are title,
 	// URL, score, and snippet, the same shape as a native search result.
 	ModeWebctlLite Mode = "webctl-lite"
+	// ModeWebctlSummarize: like ModeWebctl, with --summarize so a small
+	// model condenses each scraped page (webctl's summarize.* config).
+	ModeWebctlSummarize Mode = "webctl-summarize"
 	// ModeNative: the agent may only use its own built-in search and fetch.
 	ModeNative Mode = "native"
 )
 
 // UsesWebctl reports whether the mode reaches the web through webctl.
-func (m Mode) UsesWebctl() bool { return m == ModeWebctl || m == ModeWebctlLite }
+func (m Mode) UsesWebctl() bool {
+	return m == ModeWebctl || m == ModeWebctlLite || m == ModeWebctlSummarize
+}
 
 // Arm is one harness × model × mode combination.
 type Arm struct {
@@ -130,12 +135,15 @@ func AllArms() []Arm {
 	return []Arm{
 		{Name: "claude-sonnet-webctl", Harness: "claude", Model: "sonnet", Mode: ModeWebctl},
 		{Name: "claude-sonnet-webctl-lite", Harness: "claude", Model: "sonnet", Mode: ModeWebctlLite},
+		{Name: "claude-sonnet-webctl-summarize", Harness: "claude", Model: "sonnet", Mode: ModeWebctlSummarize},
 		{Name: "claude-sonnet-native", Harness: "claude", Model: "sonnet", Mode: ModeNative},
 		{Name: "codex-terra-webctl", Harness: "codex", Model: "gpt-5.6-terra", Mode: ModeWebctl},
 		{Name: "codex-terra-webctl-lite", Harness: "codex", Model: "gpt-5.6-terra", Mode: ModeWebctlLite},
+		{Name: "codex-terra-webctl-summarize", Harness: "codex", Model: "gpt-5.6-terra", Mode: ModeWebctlSummarize},
 		{Name: "codex-terra-native", Harness: "codex", Model: "gpt-5.6-terra", Mode: ModeNative},
 		{Name: "pi-kimi-k3-webctl", Harness: "pi", Model: "accounts/fireworks/models/kimi-k3", Mode: ModeWebctl},
 		{Name: "pi-kimi-k3-webctl-lite", Harness: "pi", Model: "accounts/fireworks/models/kimi-k3", Mode: ModeWebctlLite},
+		{Name: "pi-kimi-k3-webctl-summarize", Harness: "pi", Model: "accounts/fireworks/models/kimi-k3", Mode: ModeWebctlSummarize},
 	}
 }
 
@@ -212,7 +220,7 @@ func (claudeRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir st
 		"--max-turns", "40",
 	}
 	switch arm.Mode {
-	case ModeWebctl, ModeWebctlLite:
+	case ModeWebctl, ModeWebctlLite, ModeWebctlSummarize:
 		args = append(args,
 			"--allowedTools", "Bash(webctl:*)",
 			"--disallowedTools", "WebSearch,WebFetch,Agent,Read,Edit,Write,Glob,Grep",
@@ -252,7 +260,7 @@ func (claudeRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir st
 		res.Error = "claude reported is_error"
 	}
 	switch arm.Mode {
-	case ModeWebctl, ModeWebctlLite:
+	case ModeWebctl, ModeWebctlLite, ModeWebctlSummarize:
 		res.Violations = parsed.searches
 	case ModeNative:
 		res.Violations = parsed.bashCalls
@@ -367,7 +375,7 @@ func (codexRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir str
 		"-C", workDir,
 	}
 	switch arm.Mode {
-	case ModeWebctl, ModeWebctlLite:
+	case ModeWebctl, ModeWebctlLite, ModeWebctlSummarize:
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox", "-c", `web_search="disabled"`)
 	case ModeNative:
 		args = append(args, "-s", "read-only", "-c", `web_search="live"`)
@@ -387,7 +395,7 @@ func (codexRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir str
 	res.Answer, res.Tokens, res.Turns = parsed.answer, parsed.tokens, parsed.turns
 	res.SearchCalls, res.WebctlCalls = parsed.searches, parsed.webctl
 	switch arm.Mode {
-	case ModeWebctl, ModeWebctlLite:
+	case ModeWebctl, ModeWebctlLite, ModeWebctlSummarize:
 		res.Violations = parsed.searches
 	case ModeNative:
 		res.Violations = parsed.commands

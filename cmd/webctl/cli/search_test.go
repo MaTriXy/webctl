@@ -18,6 +18,7 @@ import (
 	"github.com/dorkitude/webctl/internal/keys"
 	"github.com/dorkitude/webctl/internal/provider"
 	"github.com/dorkitude/webctl/internal/scrape"
+	"github.com/dorkitude/webctl/internal/summarize"
 )
 
 // fakeProvider records the search it was asked to run and returns canned results.
@@ -1570,5 +1571,85 @@ func TestCutAtBoundaryAndCommas(t *testing.T) {
 		if got := commas(n); got != want {
 			t.Errorf("commas(%d) = %q", n, got)
 		}
+	}
+}
+
+type fakeSummarizer struct {
+	mu    sync.Mutex
+	calls []summarize.Input
+	fail  bool
+}
+
+func (f *fakeSummarizer) Name() string { return "fake" }
+func (f *fakeSummarizer) Summarize(_ context.Context, in summarize.Input) (string, summarize.Usage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, in)
+	if f.fail {
+		return "", summarize.Usage{}, errors.New("model down")
+	}
+	if strings.Contains(strings.Join(in.Chunks, " "), "Multi-head") {
+		return "SUMMARY: attention weighs tokens; multi-head runs several heads.", summarize.Usage{InputTokens: 100, OutputTokens: 12}, nil
+	}
+	return "nothing relevant", summarize.Usage{InputTokens: 20, OutputTokens: 2}, nil
+}
+
+// --summarize replaces kept text with the model's summary, drops pages the
+// model calls irrelevant, and falls back to the kept text on failure.
+func TestSearchSummarize(t *testing.T) {
+	fs := &fakeSummarizer{}
+	orig := newSummarizer
+	newSummarizer = func(cfg summarize.Config) (summarize.Summarizer, error) {
+		if cfg.Command != "fake-cmd" {
+			t.Errorf("command = %q", cfg.Command)
+		}
+		return fs, nil
+	}
+	t.Cleanup(func() { newSummarizer = orig })
+
+	h := newHarness(t, allKeys())
+	h.qual.relevantWord = "attention"
+	h.prov.results = []provider.SearchResult{paper, wiki}
+	h.withScraper(map[string]string{paper.URL: bigPage, wiki.URL: "Short page about attention."}, nil)
+	out, errOut, err := h.run("--scrape", "--filter-chunks", "--summarize", "--summarize-command", "fake-cmd", "--json", "--verbose", "q", "--goal", "g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.calls) != 2 || fs.calls[0].Goal != "g" || fs.calls[0].Query != "q" {
+		t.Fatalf("summarizer calls = %+v", fs.calls)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	byURL := map[string]outputResult{}
+	for _, it := range items {
+		byURL[it.URL] = it
+	}
+	if p := byURL[paper.URL]; !strings.HasPrefix(p.Content, "SUMMARY:") || p.Summarized == nil || !*p.Summarized {
+		t.Errorf("paper = %+v", p)
+	}
+	if w := byURL[wiki.URL]; w.Content != "" || w.Summarized == nil {
+		t.Errorf("nothing-relevant page should have empty summarized content: %+v", w)
+	}
+	if !strings.Contains(errOut, "summarized 2 page(s)") || !strings.Contains(errOut, "1 with nothing relevant") || !strings.Contains(errOut, "120 in / 14 out tokens") {
+		t.Errorf("summary line = %q", errOut)
+	}
+
+	// Pretty output shows the summary header; a failure shows the kept text.
+	out, _, err = h.run("--scrape", "--filter-chunks", "--summarize", "--summarize-command", "fake-cmd", "q")
+	if err != nil || !strings.Contains(out, "--- summary (") || !strings.Contains(out, "nothing relevant in") {
+		t.Errorf("pretty:\n%s (%v)", out, err)
+	}
+	fs.fail = true
+	out, errOut, err = h.run("--scrape", "--filter-chunks", "--summarize", "--summarize-command", "fake-cmd", "q")
+	if err != nil || !strings.Contains(out, "! summarize failed: model down") || !strings.Contains(out, "Multi-head attention") || !strings.Contains(errOut, "not summarized") {
+		t.Errorf("failure fallback:\n%s\n%s (%v)", out, errOut, err)
+	}
+
+	// Guard rails.
+	if _, _, err := h.run("--summarize", "q"); err == nil || !strings.Contains(err.Error(), "--scrape") {
+		t.Errorf("summarize without scrape: %v", err)
+	}
+	newSummarizer = summarize.New
+	if _, _, err := h.run("--scrape", "--summarize", "q"); err == nil || !strings.Contains(err.Error(), "backend") {
+		t.Errorf("unconfigured summarize: %v", err)
 	}
 }

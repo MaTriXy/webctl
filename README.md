@@ -217,6 +217,15 @@ webctl search "q" --scrape --scrape-top 5 --max-output 40000  # defaults 3 and 2
 
 `benchmarks/` runs Claude Code, Codex, and pi on 30 research questions with webctl and with their own web search, and has Kimi K3 grade the answers. Wall clock, tokens, cost, quality. Results: [benchmarks/RESULTS.md](benchmarks/RESULTS.md). How to run: [benchmarks/README.md](benchmarks/README.md)
 
+### Summarize
+
+`--summarize` (with `--scrape`) has a small model condense each scraped page into a short goal-focused summary, the way Claude's WebFetch does behind the scenes. Pluggable: any CLI that reads stdin (`claude -p --model haiku`, `codex exec -m gpt-5.6-luna`, `pi -p`) or any OpenAI-compatible endpoint (Fireworks DeepSeek Flash, OpenAI, Anthropic). Setup and examples for each: [docs/summarize.md](docs/summarize.md)
+
+```bash
+webctl config set summarize.command 'claude -p --model haiku'
+webctl search "q" --goal "g" --scrape --filter-chunks --summarize
+```
+
 ### Dedupe
 
 Exact duplicates (same normalized URL or title) collapse before scoring; near-duplicates are proposed by MinHash and confirmed by Jev after. [docs/dedupe.md](docs/dedupe.md)

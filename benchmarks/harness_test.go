@@ -110,6 +110,9 @@ func TestBuildPromptModes(t *testing.T) {
 	if !strings.Contains(l, "webctl search") || !strings.Contains(l, "Do not pass --scrape") || strings.Contains(l, "--filter-chunks   #") {
 		t.Errorf("lite prompt:\n%s", l)
 	}
+	if sm := BuildPrompt(c, ModeWebctlSummarize); !strings.Contains(sm, "--summarize") || strings.Contains(w, "--summarize") {
+		t.Errorf("summarize prompt:\n%s", sm)
+	}
 	if strings.Contains(n, "webctl") || !strings.Contains(n, "Do not run shell commands") {
 		t.Errorf("native prompt:\n%s", n)
 	}
@@ -120,7 +123,7 @@ func TestBuildPromptModes(t *testing.T) {
 
 func TestPairArmsAndParseArms(t *testing.T) {
 	pairs := pairArms(AllArms())
-	if len(pairs) != 4 { // claude and codex, each paired with webctl and webctl-lite
+	if len(pairs) != 6 { // claude and codex, each paired with webctl, webctl-lite, webctl-summarize
 		t.Fatalf("pairs = %+v", pairs)
 	}
 	for _, a := range DefaultArms() {

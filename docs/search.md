@@ -43,6 +43,8 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 | `--scrape-top N` | with `--scrape`, fetch only the N best-scoring kept results (default 3; 0 = all); the rest print their snippet; backfilled results are never fetched |
 | `--max-output N` | cap the printed output at N characters (default 20000; 0 = unlimited); headers always print, scraped content is allotted top-down and cut at a paragraph boundary with a marker |
 | `--max-chars N` | with `--scrape`, cap text per page (default 50000) |
+| `--summarize` | with `--scrape`, replace each page's kept text with a short summary from a small model; see `summarize` |
+| `--summarize-command CMD`, `--summarize-model NAME` | one-run overrides of `summarize.command` and `summarize.model` |
 | `--chunk-chars N` | with `--filter-chunks`, chunk size in characters (default 2000); each chunk is judged with 20% overlap from the previous one |
 | `--json` | JSON array on stdout; diagnostics stay on stderr |
 | `--urls-only` | one URL per line |

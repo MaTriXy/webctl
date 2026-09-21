@@ -28,6 +28,7 @@ const (
 	ChunkRelevance = "chunk-relevance"
 	SourceQuality  = "source-quality"
 	DuplicatePair  = "duplicate-pair"
+	Summarize      = "summarize"
 )
 
 // Prompt is a parsed OKF prompt file.
@@ -35,7 +36,7 @@ type Prompt struct {
 	// Frontmatter fields.
 	Name        string   `yaml:"name"`
 	Description string   `yaml:"description"`
-	Type        string   `yaml:"type"` // "score" or "noul"
+	Type        string   `yaml:"type"` // "score" or "noul" for Jev; "text" for a plain model prompt
 	Model       string   `yaml:"model"`
 	Criteria    []string `yaml:"criteria"`
 	Batch       bool     `yaml:"batch"`
@@ -96,10 +97,14 @@ func Parse(name string, content []byte) (*Prompt, error) {
 		if len(p.Criteria) > 0 {
 			return nil, fmt.Errorf("prompt %s: noul prompts must not declare criteria", name)
 		}
+	case "text":
+		if len(p.Criteria) > 0 {
+			return nil, fmt.Errorf("prompt %s: text prompts must not declare criteria", name)
+		}
 	case "":
 		return nil, fmt.Errorf("prompt %s: frontmatter is missing required field \"type\"", name)
 	default:
-		return nil, fmt.Errorf("prompt %s: unknown type %q (expected score or noul)", name, p.Type)
+		return nil, fmt.Errorf("prompt %s: unknown type %q (expected score, noul, or text)", name, p.Type)
 	}
 	p.Body = strings.TrimSpace(string(body))
 	if p.Body == "" {

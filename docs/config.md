@@ -19,6 +19,14 @@ Settings resolve in this order: command-line flag, `WEBCTL_*` environment variab
 | `cooldown.steps` | `WEBCTL_COOLDOWN_STEPS` | `15m,1h,4h,12h,24h,72h` | window per consecutive failure |
 | `cooldown.probe_interval` | `WEBCTL_COOLDOWN_PROBE_INTERVAL` | `24h` | one probe this often at the top step |
 | `cooldown.quota_start` | `WEBCTL_COOLDOWN_QUOTA_START` | 3 | step a 402 starts at |
+| `summarize.command` | `WEBCTL_SUMMARIZE_COMMAND` | | `--summarize` backend: shell command, prompt on stdin, summary on stdout |
+| `summarize.endpoint` | `WEBCTL_SUMMARIZE_ENDPOINT` | | `--summarize` backend: OpenAI-compatible base URL |
+| `summarize.model` | `WEBCTL_SUMMARIZE_MODEL` | | model for the endpoint |
+| `summarize.api_key_env` | `WEBCTL_SUMMARIZE_API_KEY_ENV` | by host | env var holding the endpoint key |
+| `summarize.api_key` | `WEBCTL_SUMMARIZE_API_KEY` | | the key itself (prefer the env var) |
+| `summarize.max_tokens` | `WEBCTL_SUMMARIZE_MAX_TOKENS` | 500 | summary length cap |
+| `summarize.reasoning_effort` | `WEBCTL_SUMMARIZE_REASONING_EFFORT` | `none` | sent to the endpoint; empty omits it |
+| `summarize.timeout` | `WEBCTL_SUMMARIZE_TIMEOUT` | `60s` | per page |
 
 `config.yaml` uses the same names, nested for dots:
 

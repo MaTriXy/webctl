@@ -30,6 +30,10 @@ Chunks are packed into batches that stay under an estimated-token budget and sen
 
 Failure is contained. If some batches fail, the chunks they covered are kept unfiltered rather than dropped — losing a verdict must never silently delete page content — and the run reports `k/n chunks kept, u unjudged` with `chunks_unjudged` in JSON. Only when every batch fails does the page fall back to its whole unfiltered text, reported as before.
 
+## Summarize
+
+`--summarize` hands each page's kept text to a small model (Haiku, Luna, DeepSeek Flash) and prints its goal-focused summary instead. Pluggable: a shell command or an OpenAI-compatible endpoint. See `summarize`.
+
 ## Output budget
 
 `--max-output` caps the whole printed output (default 20,000 characters; 0 = unlimited), because an agent's tool-result window is small: Claude Code shows only a 2 KB preview of output past about 30 KB. Every kept result's header (title, URL, score, snippet) always prints; scraped content is then allotted to results in score order, and a page that does not fit is cut at a paragraph boundary with a marker, `… (12,400 more chars trimmed by --max-output)`. No result is dropped for the budget, only its content. In JSON the `content` fields are bounded the same way and `chars_trimmed` reports the cut. A summary line on stderr says how much was trimmed.

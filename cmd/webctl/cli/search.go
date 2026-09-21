@@ -23,6 +23,7 @@ import (
 	"github.com/dorkitude/webctl/internal/keys"
 	"github.com/dorkitude/webctl/internal/provider"
 	"github.com/dorkitude/webctl/internal/scrape"
+	"github.com/dorkitude/webctl/internal/summarize"
 )
 
 // searchFlags holds the flag values for the search (root) command.
@@ -48,6 +49,9 @@ type searchFlags struct {
 	chunks     bool
 	noDedupe   bool
 	scrapeTop  int
+	summarize  bool
+	sumCommand string
+	sumModel   string
 	maxOutput  int
 }
 
@@ -82,6 +86,9 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap text per page")
 	f.IntVar(&sf.chunkChars, "chunk-chars", scrape.DefaultChunkChars, "with --filter-chunks, chunk size in characters; judged with 20% overlap")
 	f.IntVar(&sf.scrapeTop, "scrape-top", DefaultScrapeTop, "with --scrape, fetch only the N best-scoring kept results; 0 = all")
+	f.BoolVar(&sf.summarize, "summarize", false, "with --scrape, replace each page's kept text with a short summary from a small model (see `webctl docs summarize`)")
+	f.StringVar(&sf.sumCommand, "summarize-command", "", "summarizer command for this run, e.g. 'claude -p --model haiku' (overrides summarize.command)")
+	f.StringVar(&sf.sumModel, "summarize-model", "", "model for the configured summarize.endpoint for this run")
 	f.IntVar(&sf.maxOutput, "max-output", DefaultMaxOutput, "cap printed output in characters, trimming scraped content top-down; 0 = unlimited")
 	f.BoolVar(&sf.jsonOut, "json", false, "JSON output")
 	f.BoolVar(&sf.urlsOnly, "urls-only", false, "one URL per line")
@@ -234,7 +241,13 @@ type searchOptions struct {
 	// MaxOutput caps the printed output in runes by trimming scraped
 	// content, never headers; 0 means unlimited.
 	MaxOutput int
+	// Summarizer, when set, rewrites each scraped page's kept text into a
+	// short goal-focused summary (--summarize).
+	Summarizer summarize.Summarizer
 }
+
+// newSummarizer builds the --summarize backend. Tests override it.
+var newSummarizer = summarize.New
 
 // ask is what every Jev judge is given.
 func (o searchOptions) ask() jev.Ask { return jev.Ask{Query: o.Query, Goal: o.Goal} }
@@ -298,6 +311,9 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	if f.scrapeTop < 0 {
 		return searchOptions{}, fmt.Errorf("--scrape-top must be 0 or more, got %d", f.scrapeTop)
 	}
+	if (f.summarize || f.sumCommand != "" || f.sumModel != "") && !f.scrape {
+		return searchOptions{}, errors.New("--summarize requires --scrape")
+	}
 	if f.maxOutput < 0 {
 		return searchOptions{}, fmt.Errorf("--max-output must be 0 or more, got %d", f.maxOutput)
 	}
@@ -321,6 +337,26 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	}
 	if f.num > 0 {
 		opts.Num = f.num
+	}
+	if f.summarize || f.sumCommand != "" || f.sumModel != "" {
+		sc := cfg.Summarize
+		if f.sumCommand != "" {
+			sc.Command = f.sumCommand
+		}
+		if f.sumModel != "" {
+			sc.Model = f.sumModel
+			if f.sumCommand == "" {
+				sc.Command = "" // a model names the endpoint backend
+			}
+		}
+		if !sc.Configured() {
+			return searchOptions{}, errors.New("--summarize needs a backend: `webctl config set summarize.command '...'` or summarize.endpoint + summarize.model; see `webctl docs summarize`")
+		}
+		sm, err := newSummarizer(sc)
+		if err != nil {
+			return searchOptions{}, err
+		}
+		opts.Summarizer = sm
 	}
 	opts.MinResults = cfg.MinResults
 	if f.minResults >= 0 {
@@ -437,10 +473,11 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 			}
 			urls := make([]string, n)
 			fallback := make([]string, n)
+			titles := make([]string, n)
 			for i, r := range raw[:n] {
-				urls[i], fallback[i] = r.URL, r.Content
+				urls[i], fallback[i], titles[i] = r.URL, r.Content, r.Title
 			}
-			pages := scrapePages(ctx, opts, chunkFilter, urls, fallback)
+			pages := scrapePages(ctx, opts, chunkFilter, urls, fallback, titles)
 			for i := range pages {
 				raw[i].Page = &pages[i]
 			}
@@ -496,7 +533,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		// Only the best kept results are worth fetching; ranked is in
 		// score order, and backfilled results were under the cut.
 		var idx []int
-		var urls, fallback []string
+		var urls, fallback, titles []string
 		for i, r := range ranked {
 			if !r.Kept || r.Backfilled || (opts.ScrapeTop > 0 && len(idx) >= opts.ScrapeTop) {
 				continue
@@ -504,8 +541,9 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 			idx = append(idx, i)
 			urls = append(urls, r.Result.URL)
 			fallback = append(fallback, r.Result.Content)
+			titles = append(titles, r.Result.Title)
 		}
-		pages := scrapePages(ctx, opts, chunkFilter, urls, fallback)
+		pages := scrapePages(ctx, opts, chunkFilter, urls, fallback, titles)
 		for j, i := range idx {
 			ranked[i].Page = &pages[j]
 		}
@@ -538,6 +576,13 @@ type pageContent struct {
 	RawChars int
 	// Trimmed counts the runes cut from Content by --max-output.
 	Trimmed int
+	// Summarized is set when --summarize replaced Content with a summary;
+	// SummaryErr records a summarizer failure (Content is then the kept
+	// text); SummaryFrom is the kept text's length before summarizing.
+	Summarized   bool
+	SummaryErr   error
+	SummaryFrom  int
+	SummaryUsage summarize.Usage
 }
 
 // scrapePages fetches every URL (aligned with urls), caps each page's text,
@@ -545,7 +590,7 @@ type pageContent struct {
 // page's chunks go to Jev in a single batch request; pages run concurrently.
 // fallback (aligned with urls) is the provider's excerpt, used when a fetch
 // fails.
-func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fallback []string) []pageContent {
+func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fallback, titles []string) []pageContent {
 	out := make([]pageContent, len(urls))
 	if len(urls) == 0 {
 		return out
@@ -579,7 +624,49 @@ func scrapePages(ctx context.Context, opts searchOptions, q qualifier, urls, fal
 		}(&out[i])
 	}
 	wg.Wait()
+	if opts.Summarizer != nil {
+		summarizePages(ctx, opts, urls, titles, out)
+	}
 	return out
+}
+
+// summarizePages rewrites each page's kept text into a short summary. A
+// page the model calls irrelevant ends up with no content; a summarizer
+// failure leaves the kept text in place and records the error.
+func summarizePages(ctx context.Context, opts searchOptions, urls, titles []string, pages []pageContent) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, summarize.DefaultConcurrency)
+	for i := range pages {
+		if pages[i].Content == "" {
+			continue
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			pc := &pages[i]
+			title := ""
+			if i < len(titles) {
+				title = titles[i]
+			}
+			in := summarize.Input{Query: opts.Query, Goal: opts.Goal, Title: title, URL: urls[i], Chunks: []string{pc.Content}}
+			text, usage, err := opts.Summarizer.Summarize(ctx, in)
+			pc.SummaryUsage = usage
+			if err != nil {
+				pc.SummaryErr = err
+				return
+			}
+			pc.SummaryFrom = len([]rune(pc.Content))
+			pc.Summarized = true
+			if summarize.IsNothing(text) {
+				pc.Content = ""
+				return
+			}
+			pc.Content = text
+		}(i)
+	}
+	wg.Wait()
 }
 
 // filterChunks splits pc.Content, asks Jev about every chunk, and reassembles
@@ -687,6 +774,35 @@ func writeScrapeSummary(w io.Writer, pages []pageContent, opts searchOptions) {
 		}
 	} else {
 		fmt.Fprintf(w, ", %d chars", chars)
+	}
+	if opts.Summarizer != nil {
+		var n, from, to, failed, empty, in, outTok int
+		for _, p := range pages {
+			if p.SummaryErr != nil {
+				failed++
+			}
+			if !p.Summarized {
+				continue
+			}
+			n++
+			from += p.SummaryFrom
+			to += len([]rune(p.Content))
+			if p.Content == "" {
+				empty++
+			}
+			in += p.SummaryUsage.InputTokens
+			outTok += p.SummaryUsage.OutputTokens
+		}
+		fmt.Fprintf(w, "; summarized %d page(s): %d → %d chars", n, from, to)
+		if empty > 0 {
+			fmt.Fprintf(w, ", %d with nothing relevant", empty)
+		}
+		if in+outTok > 0 {
+			fmt.Fprintf(w, " (%d in / %d out tokens)", in, outTok)
+		}
+		if failed > 0 {
+			fmt.Fprintf(w, "; %d page(s) not summarized (error, showing kept text)", failed)
+		}
 	}
 	fmt.Fprintln(w)
 	if opts.Format == formatPretty {
@@ -932,6 +1048,9 @@ type outputResult struct {
 	FilterError    string `json:"filter_error,omitempty"`
 	// CharsTrimmed is how much content --max-output cut from this result.
 	CharsTrimmed *int `json:"chars_trimmed,omitempty"`
+	// Summarized marks content as a --summarize summary of the kept text.
+	Summarized   *bool  `json:"summarized,omitempty"`
+	SummaryError string `json:"summary_error,omitempty"`
 }
 
 // fillPage copies scraped content into the JSON fields.
@@ -941,6 +1060,7 @@ func (o *outputResult) fillPage(p *pageContent) {
 	}
 	o.Content, o.ScrapeError, o.ChunksTotal, o.ChunksKept, o.ChunksUnjudged, o.FilterError, o.CharsTrimmed = pageFields(p)
 	o.PDF = pdfFlag(p)
+	o.Summarized, o.SummaryError = summaryFields(p)
 }
 
 // pageFields flattens a pageContent into the shared JSON field values.
@@ -968,6 +1088,20 @@ func pageFields(p *pageContent) (content, scrapeErr string, total, kept, unjudge
 		trimmed = &t
 	}
 	return content, scrapeErr, total, kept, unjudged, filterErr, trimmed
+}
+
+// summaryFields flattens the --summarize outcome for JSON.
+func summaryFields(p *pageContent) (*bool, string) {
+	var flag *bool
+	if p.Summarized {
+		t := true
+		flag = &t
+	}
+	errText := ""
+	if p.SummaryErr != nil {
+		errText = p.SummaryErr.Error()
+	}
+	return flag, errText
 }
 
 // pdfFlag returns a pointer to true for PDF pages, nil otherwise, so the
@@ -1031,6 +1165,8 @@ type rawResult struct {
 	ChunksUnjudged *int   `json:"chunks_unjudged,omitempty"`
 	FilterError    string `json:"filter_error,omitempty"`
 	CharsTrimmed   *int   `json:"chars_trimmed,omitempty"`
+	Summarized     *bool  `json:"summarized,omitempty"`
+	SummaryError   string `json:"summary_error,omitempty"`
 }
 
 func (r *rawResult) fillPage() {
@@ -1039,6 +1175,7 @@ func (r *rawResult) fillPage() {
 	}
 	r.Content, r.ScrapeError, r.ChunksTotal, r.ChunksKept, r.ChunksUnjudged, r.FilterError, r.CharsTrimmed = pageFields(r.Page)
 	r.PDF = pdfFlag(r.Page)
+	r.Summarized, r.SummaryError = summaryFields(r.Page)
 }
 
 func toRaw(results []provider.SearchResult, engines map[string][]string) []rawResult {
@@ -1195,7 +1332,16 @@ func writeContent(w io.Writer, p *pageContent) {
 	if p.PDF {
 		kind = "PDF text"
 	}
+	if p.SummaryErr != nil {
+		fmt.Fprintf(w, "    ! summarize failed: %v (showing kept text)\n", p.SummaryErr)
+	}
 	switch {
+	case p.Summarized && p.Content == "":
+		fmt.Fprintf(w, "    --- summary: nothing relevant in %d chars of kept text ---\n", p.SummaryFrom)
+		fmt.Fprintln(w, "    --- end ---")
+		return
+	case p.Summarized:
+		fmt.Fprintf(w, "    --- summary (%d chars from %d kept; %d/%d chunks) ---\n", len([]rune(p.Content)), p.SummaryFrom, p.ChunksKept, p.ChunksTotal)
 	case p.Filtered && p.ChunksUnjudged > 0:
 		fmt.Fprintf(w, "    --- %s (%d/%d chunks kept, %d unjudged, %d chars) ---\n", kind, p.ChunksKept, p.ChunksTotal, p.ChunksUnjudged, len([]rune(p.Content)))
 	case p.Filtered && p.FilterErr == nil:

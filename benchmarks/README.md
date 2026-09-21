@@ -9,6 +9,7 @@ Each case in `cases/` is a research question. Every arm gets the same question w
 | arm | harness | model | reaches the web through |
 |---|---|---|---|
 | `claude-sonnet-webctl` | Claude Code | sonnet | `webctl` only (Bash restricted to `webctl`, WebSearch/WebFetch disallowed) |
+| `claude-sonnet-webctl-summarize` | Claude Code | sonnet | `webctl` only, told to add `--scrape --filter-chunks --summarize` when it would otherwise read a page; needs webctl's `summarize.*` configured (the runs used Fireworks DeepSeek Flash via `WEBCTL_SUMMARIZE_ENDPOINT`/`_MODEL`) |
 | `claude-sonnet-native` | Claude Code | sonnet | built-in WebSearch/WebFetch only (Bash disallowed) |
 | `codex-terra-*` (not default) | Codex | gpt-5.6-terra | same three arms; `--arms all` adds them. Left out of the results because Codex's native search is server-side and what it puts into context cannot be observed |
 | `pi-kimi-k3-webctl` | pi | Kimi K3 (Fireworks) | `webctl` only (pi has no built-in search) |

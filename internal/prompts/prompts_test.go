@@ -132,7 +132,7 @@ func TestLoadFSAndListFS(t *testing.T) {
 
 func TestEmbeddedPrompts(t *testing.T) {
 	names := List()
-	want := []string{ChunkRelevance, DuplicatePair, RelevanceBatch, RelevanceNoul, RelevanceScore, SourceQuality, ThemeCoverage}
+	want := []string{ChunkRelevance, DuplicatePair, RelevanceBatch, RelevanceNoul, RelevanceScore, SourceQuality, Summarize, ThemeCoverage}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("List = %v, want %v", names, want)
 	}
@@ -145,7 +145,7 @@ func TestEmbeddedPrompts(t *testing.T) {
 		if p.Name != name {
 			t.Errorf("Load(%q).Name = %q", name, p.Name)
 		}
-		if p.Model == "" || p.Description == "" {
+		if p.Description == "" || (p.Model == "" && p.Type != "text") {
 			t.Errorf("%s: model/description should be set", name)
 		}
 		// Every shipped prompt must render cleanly with full Data.

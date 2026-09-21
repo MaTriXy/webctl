@@ -21,6 +21,7 @@ import (
 
 	"github.com/dorkitude/webctl/internal/keys"
 	"github.com/dorkitude/webctl/internal/provider"
+	"github.com/dorkitude/webctl/internal/summarize"
 )
 
 // Defaults.
@@ -61,6 +62,9 @@ type Config struct {
 	Cooldown     provider.CooldownConfig
 	CooldownPath string
 
+	// Summarize configures the optional page summarizer (--summarize).
+	Summarize summarize.Config
+
 	// Keys holds the resolved API keys and the SearXNG URL (env overrides file).
 	Keys *keys.Store
 	// KeySource records where each key came from ("env", "file", or "").
@@ -96,6 +100,15 @@ func New() *viper.Viper {
 	v.SetDefault("cooldown.steps", durationStrings(provider.DefaultCooldown.Steps))
 	v.SetDefault("cooldown.probe_interval", provider.DefaultCooldown.ProbeInterval.String())
 	v.SetDefault("cooldown.quota_start", provider.DefaultCooldown.QuotaStart)
+	// Page summarizer; see summarize.Config and `webctl docs summarize`.
+	v.SetDefault("summarize.command", "")
+	v.SetDefault("summarize.endpoint", "")
+	v.SetDefault("summarize.model", "")
+	v.SetDefault("summarize.api_key", "")
+	v.SetDefault("summarize.api_key_env", "")
+	v.SetDefault("summarize.max_tokens", summarize.DefaultMaxTokens)
+	v.SetDefault("summarize.reasoning_effort", "none")
+	v.SetDefault("summarize.timeout", summarize.DefaultTimeout.String())
 
 	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
@@ -212,6 +225,7 @@ func Load(opts Options) (*Config, error) {
 		Sources:      v.GetInt("sources"),
 		JevBaseURL:   strings.TrimRight(v.GetString("jev.base_url"), "/"),
 		JevModel:     v.GetString("jev.model"),
+		Summarize:    summarizeConfig(v),
 		Keys:         &keys.Store{},
 		KeySource:    map[keys.Name]string{},
 	}
@@ -243,6 +257,41 @@ func Load(opts Options) (*Config, error) {
 		return nil, fmt.Errorf("sources must be positive, got %d", cfg.Sources)
 	}
 	return cfg, nil
+}
+
+// summarizeConfig reads summarize.* settings. The API key comes from
+// summarize.api_key, or the environment variable named by
+// summarize.api_key_env, or FIREWORKS_API_KEY / OPENAI_API_KEY when the
+// endpoint host suggests one.
+func summarizeConfig(v *viper.Viper) summarize.Config {
+	c := summarize.Config{
+		Command:         strings.TrimSpace(v.GetString("summarize.command")),
+		Endpoint:        strings.TrimSpace(v.GetString("summarize.endpoint")),
+		Model:           strings.TrimSpace(v.GetString("summarize.model")),
+		APIKey:          strings.TrimSpace(v.GetString("summarize.api_key")),
+		MaxTokens:       v.GetInt("summarize.max_tokens"),
+		ReasoningEffort: strings.TrimSpace(v.GetString("summarize.reasoning_effort")),
+	}
+	if d, err := time.ParseDuration(strings.TrimSpace(v.GetString("summarize.timeout"))); err == nil && d > 0 {
+		c.Timeout = d
+	}
+	if c.APIKey == "" {
+		envName := strings.TrimSpace(v.GetString("summarize.api_key_env"))
+		if envName == "" {
+			switch {
+			case strings.Contains(c.Endpoint, "fireworks.ai"):
+				envName = "FIREWORKS_API_KEY"
+			case strings.Contains(c.Endpoint, "openai.com"):
+				envName = "OPENAI_API_KEY"
+			case strings.Contains(c.Endpoint, "anthropic.com"):
+				envName = "ANTHROPIC_API_KEY"
+			}
+		}
+		if envName != "" {
+			c.APIKey = strings.TrimSpace(os.Getenv(envName))
+		}
+	}
+	return c
 }
 
 // ProviderKey returns the credential for the named search provider: the API
