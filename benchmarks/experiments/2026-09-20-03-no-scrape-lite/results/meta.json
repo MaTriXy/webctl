@@ -1,0 +1,91 @@
+{
+  "arms": [
+    {
+      "name": "claude-sonnet-webctl",
+      "harness": "claude",
+      "model": "sonnet",
+      "mode": "webctl"
+    },
+    {
+      "name": "claude-sonnet-webctl-lite",
+      "harness": "claude",
+      "model": "sonnet",
+      "mode": "webctl-lite"
+    },
+    {
+      "name": "claude-sonnet-native",
+      "harness": "claude",
+      "model": "sonnet",
+      "mode": "native"
+    },
+    {
+      "name": "codex-terra-webctl",
+      "harness": "codex",
+      "model": "gpt-5.6-terra",
+      "mode": "webctl"
+    },
+    {
+      "name": "codex-terra-webctl-lite",
+      "harness": "codex",
+      "model": "gpt-5.6-terra",
+      "mode": "webctl-lite"
+    },
+    {
+      "name": "codex-terra-native",
+      "harness": "codex",
+      "model": "gpt-5.6-terra",
+      "mode": "native"
+    },
+    {
+      "name": "pi-kimi-k3-webctl",
+      "harness": "pi",
+      "model": "accounts/fireworks/models/kimi-k3",
+      "mode": "webctl"
+    },
+    {
+      "name": "pi-kimi-k3-webctl-lite",
+      "harness": "pi",
+      "model": "accounts/fireworks/models/kimi-k3",
+      "mode": "webctl-lite"
+    }
+  ],
+  "case_names": [
+    "attention-paper-dimensions",
+    "clickhouse-final-modifier",
+    "community-bun-vs-node-production",
+    "community-kafka-to-redpanda",
+    "community-macos-operation-not-permitted",
+    "community-proxmox-vs-vmware",
+    "community-wsus-alternatives",
+    "go-context-cancellation",
+    "jwst-orbit",
+    "k8s-api-deprecation-ingress",
+    "k8s-oomkilled-under-limit",
+    "kafka-kraft-quorum-voters",
+    "kafka-min-insync-replicas",
+    "news-f1-latest-race",
+    "news-fomc-latest-rate",
+    "news-kubernetes-latest-release",
+    "news-microsoft-azure-growth",
+    "news-nvidia-latest-quarter",
+    "news-openai-latest-announcement",
+    "news-tesla-latest-call",
+    "pep8-line-length",
+    "postgres-autovacuum-threshold",
+    "redis-xautoclaim",
+    "rfc9110-retry-after",
+    "rust-pin-future-poll",
+    "sodium-daily-limits",
+    "sqlite-wal-autocheckpoint",
+    "terraform-moved-block",
+    "tls13-key-share",
+    "us-ev-tax-credit-end"
+  ],
+  "cases": 30,
+  "experiment": "2026-09-20-03-no-scrape-lite",
+  "exported": "2026-09-20T22:46:37.312854-07:00",
+  "finished": "2026-09-20T22:46:37.040625-07:00",
+  "judge_model": "fireworks/accounts/fireworks/models/kimi-k3",
+  "started": "2026-09-20T16:55:38.590934-07:00",
+  "webctl_version": "0.0.028"
+}

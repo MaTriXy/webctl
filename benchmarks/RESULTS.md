@@ -1,3 +1,28 @@
+# Experiments
+
+Durable evidence lives in `benchmarks/experiments/<name>/results/` as `cells.jsonl` (one line per case × arm), `meta.json`, and `report.md`, with a README per experiment:
+
+- `2026-09-20-01-baseline-webctl-0.1.4`: first run, webctl as released.
+- `2026-09-20-02-bounded-output-0.0.028`: webctl arms re-run after `--scrape-top 3`, `--max-output 20000`, boilerplate stripping, JSON rejection.
+- `2026-09-20-03-no-scrape-lite`: adds webctl-lite arms (no `--scrape`) and the search-payload measurement.
+
+`webctl-bench report <experiment-name>` regenerates any report from its JSONL.
+
+# Search payload, not total tokens
+
+Comparing search tools means comparing what they put into the agent's context, not the harness's per-turn baseline. Experiment 03 measures that as chars of search-tool results returned to the agent, divided by 4:
+
+| arm | payload tokens per case | quality |
+|---|---|---|
+| Claude native (WebSearch + WebFetch) | 1.0k | 8.53 |
+| Claude webctl-lite (no scrape) | 1.5k | 9.40 |
+| Claude webctl (scrape top 3) | 4.6k | 9.47 |
+| Codex webctl-lite | 2.0k | 9.20 |
+| Codex webctl (scrape top 3) | 6.8k | 9.37 |
+| Codex native | hidden, server-side | 9.37 |
+
+Claude's native payload is small because it is links plus a hidden-model summary; the snippet reading happens in sub-calls that appear in the bill but not the context. webctl-lite is the closest like-for-like: 50% more payload than native links, a point higher in quality, and the cheapest of the three on Claude ($0.097 per case versus $0.112 scrape, $0.138 native). Scraping triples the payload for 0.1 to 0.2 points of quality; it earns that on long documents and community threads and nowhere else.
+
 # Rerun after bounding output: webctl 0.0.028
 
 Same 30 cases and native cells; the three webctl arms re-run with `--scrape-top 3`, `--max-output 20000`, boilerplate stripping, and JSON-page rejection. Every case re-judged in one call, so native scores moved slightly too (judge noise: about 0.1 to 0.2 points).
