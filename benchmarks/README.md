@@ -10,8 +10,7 @@ Each case in `cases/` is a research question. Every arm gets the same question w
 |---|---|---|---|
 | `claude-sonnet-webctl` | Claude Code | sonnet | `webctl` only (Bash restricted to `webctl`, WebSearch/WebFetch disallowed) |
 | `claude-sonnet-native` | Claude Code | sonnet | built-in WebSearch/WebFetch only (Bash disallowed) |
-| `codex-terra-webctl` | Codex | gpt-5.6-terra | `webctl` only (shell, web search disabled) |
-| `codex-terra-native` | Codex | gpt-5.6-terra | built-in web search only (read-only sandbox) |
+| `codex-terra-*` (not default) | Codex | gpt-5.6-terra | same three arms; `--arms all` adds them. Left out of the results because Codex's native search is server-side and what it puts into context cannot be observed |
 | `pi-kimi-k3-webctl` | pi | Kimi K3 (Fireworks) | `webctl` only (pi has no built-in search) |
 
 Per arm and case it records wall clock, tokens (uncached input, cache read, cache write, output), cost where the harness reports it, tool calls, and violations (a native search in a webctl arm, or a shell command in a native arm).

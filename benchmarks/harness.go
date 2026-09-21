@@ -112,8 +112,21 @@ func NewRunner(harness string) (Runner, error) {
 }
 
 // DefaultArms is the matrix the benchmark runs unless told otherwise.
-// pi has no built-in web search, so it has only a webctl arm.
+// pi has no built-in web search, so it has only webctl arms. Codex arms
+// exist (AllArms) but are not default: its native search is server-side,
+// so what it puts into context is not observable.
 func DefaultArms() []Arm {
+	var out []Arm
+	for _, a := range AllArms() {
+		if a.Harness != "codex" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// AllArms is every arm the tool knows, including Codex.
+func AllArms() []Arm {
 	return []Arm{
 		{Name: "claude-sonnet-webctl", Harness: "claude", Model: "sonnet", Mode: ModeWebctl},
 		{Name: "claude-sonnet-webctl-lite", Harness: "claude", Model: "sonnet", Mode: ModeWebctlLite},
@@ -127,10 +140,14 @@ func DefaultArms() []Arm {
 }
 
 // ParseArms turns "claude-sonnet-webctl,codex-terra-native" into arms from
-// DefaultArms, or errors on an unknown name.
+// AllArms, or errors on an unknown name. "" and "default" give DefaultArms;
+// "all" gives every arm including Codex.
 func ParseArms(spec string) ([]Arm, error) {
-	all := DefaultArms()
-	if strings.TrimSpace(spec) == "" || spec == "all" {
+	all := AllArms()
+	switch strings.TrimSpace(spec) {
+	case "", "default":
+		return DefaultArms(), nil
+	case "all":
 		return all, nil
 	}
 	var out []Arm

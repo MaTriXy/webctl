@@ -143,7 +143,7 @@ func newRunCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&casesDir, "cases-dir", "benchmarks/cases", "directory of case YAML files")
 	f.StringVar(&pattern, "cases", "", "glob on case names, e.g. 'kafka-*'")
-	f.StringVar(&armSpec, "arms", "all", "comma-separated arm names, or all: "+armNames())
+	f.StringVar(&armSpec, "arms", "default", "comma-separated arm names, default (Claude and pi), or all (adds Codex): "+armNames())
 	f.StringVar(&out, "out", "", "run file to write (default ~/webctl/benchmarks/<time>.json)")
 	f.StringVar(&resume, "resume", "", "run file (or 'latest') whose finished cells are kept; only missing cells run")
 	f.StringVar(&experiment, "experiment", "", "also export the run to benchmarks/experiments/<name>/results")
@@ -251,8 +251,15 @@ func newListCmd() *cobra.Command {
 				}
 				fmt.Printf("  %-28s %-10s %-8s %s\n", c.Name, c.Domain, kind, truncate(c.Question, 70))
 			}
-			fmt.Println("\narms:")
-			for _, a := range benchmarks.DefaultArms() {
+			fmt.Println("\narms (* = default):")
+			for _, a := range benchmarks.AllArms() {
+				mark := " "
+				for _, d := range benchmarks.DefaultArms() {
+					if d.Name == a.Name {
+						mark = "*"
+					}
+				}
+				fmt.Print(mark)
 				fmt.Printf("  %-24s %s %s (%s)\n", a.Name, a.Harness, a.Model, a.Mode)
 			}
 			return nil
@@ -274,7 +281,7 @@ func splitList(s string) []string {
 
 func armNames() string {
 	var names []string
-	for _, a := range benchmarks.DefaultArms() {
+	for _, a := range benchmarks.AllArms() {
 		names = append(names, a.Name)
 	}
 	return strings.Join(names, ",")

@@ -119,9 +119,14 @@ func TestBuildPromptModes(t *testing.T) {
 }
 
 func TestPairArmsAndParseArms(t *testing.T) {
-	pairs := pairArms(DefaultArms())
+	pairs := pairArms(AllArms())
 	if len(pairs) != 4 { // claude and codex, each paired with webctl and webctl-lite
 		t.Fatalf("pairs = %+v", pairs)
+	}
+	for _, a := range DefaultArms() {
+		if a.Harness == "codex" {
+			t.Error("codex should not be a default arm")
+		}
 	}
 	for _, p := range pairs {
 		if p.native.Harness != p.webctl.Harness || p.native.Model != p.webctl.Model {
