@@ -22,7 +22,7 @@ Usage:
   webctl search "<search-engine style query>" --goal "<what you actually need, in plain words>"
   webctl search "<query>" --goal "<goal>" --scrape --filter-chunks   # also returns the relevant parts of each page
 
-Always pass --goal. Prefer --scrape --filter-chunks over trying to read pages yourself: it returns only the chunks that matter. Run at most 4 webctl commands.
+Always pass --goal. The snippets are usually enough; add --scrape --filter-chunks whenever you would otherwise read a whole page, since it returns only the chunks that matter. Run at most 4 webctl commands.
 
 `)
 	case ModeWebctlLite:

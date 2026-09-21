@@ -18,7 +18,7 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 3. **Score.** Jev scores each result 0–10 on topic and source quality. See `filtering`.
 4. **Near-dedupe.** MinHash proposes look-alike pairs; Jev confirms them in one request; groups keep the best copy.
 5. **Threshold.** Results below `min_score` (default 6) are dropped. `--verbose` shows them anyway, marked.
-6. **Scrape** (recommended for agents). The top `--scrape-top` kept pages are fetched; `--filter-chunks` returns only the chunks relevant to the goal, so prefer `--scrape --filter-chunks` over reading pages yourself. See `scraping`.
+6. **Scrape** (optional). The top kept pages are fetched; `--filter-chunks` returns only the chunks relevant to the goal. Use it whenever you would otherwise read a whole page. See `scraping`.
 7. **Print.** Terminal text, `--json`, or `--urls-only`, within `--max-output` characters.
 
 ## Flags
