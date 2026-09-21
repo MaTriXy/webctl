@@ -215,7 +215,7 @@ webctl search "q" --scrape --scrape-top 5 --max-output 40000  # defaults 3 and 2
 
 ### Benchmarks
 
-`benchmarks/` runs Claude Code, Codex, and pi on 30 research questions with webctl and with their own web search, and has Kimi K3 grade the answers. Wall clock, tokens, cost, quality. [benchmarks/README.md](benchmarks/README.md)
+`benchmarks/` runs Claude Code, Codex, and pi on 30 research questions with webctl and with their own web search, and has Kimi K3 grade the answers. Wall clock, tokens, cost, quality. Results: [benchmarks/RESULTS.md](benchmarks/RESULTS.md). How to run: [benchmarks/README.md](benchmarks/README.md)
 
 ### Dedupe
 
