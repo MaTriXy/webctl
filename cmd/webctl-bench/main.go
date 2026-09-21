@@ -46,10 +46,10 @@ Runs are saved as JSON under ~/webctl/benchmarks with raw logs beside them.`,
 
 func newRunCmd() *cobra.Command {
 	var (
-		casesDir, pattern, armSpec, out, resume, judgeModel string
-		concurrency                                         int
-		timeout                                             time.Duration
-		noJudge                                             bool
+		casesDir, pattern, armSpec, out, resume, judgeModel, rerunArms string
+		concurrency                                                    int
+		timeout                                                        time.Duration
+		noJudge                                                        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -121,6 +121,7 @@ func newRunCmd() *cobra.Command {
 				Judge:         judge,
 				OutPath:       out,
 				Resume:        prior,
+				RerunArms:     splitList(rerunArms),
 				Progress:      os.Stderr,
 				WebctlVersion: strings.TrimSpace(strings.TrimPrefix(string(ver), "webctl version ")),
 			})
@@ -138,6 +139,7 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&armSpec, "arms", "all", "comma-separated arm names, or all: "+armNames())
 	f.StringVar(&out, "out", "", "run file to write (default ~/webctl/benchmarks/<time>.json)")
 	f.StringVar(&resume, "resume", "", "run file (or 'latest') whose finished cells are kept; only missing cells run")
+	f.StringVar(&rerunArms, "rerun-arms", "", "with --resume, comma-separated arms whose cells are discarded and run again; every case touched is judged again")
 	f.StringVar(&judgeModel, "judge-model", benchmarks.DefaultJudgeModel, "pi model pattern for the judge")
 	f.IntVar(&concurrency, "concurrency", 3, "agent runs in flight at once (each harness gets half)")
 	f.DurationVar(&timeout, "timeout", 6*time.Minute, "per agent run")
@@ -201,6 +203,16 @@ func newListCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&casesDir, "cases-dir", "benchmarks/cases", "directory of case YAML files")
 	return cmd
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func armNames() string {

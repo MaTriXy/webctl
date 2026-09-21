@@ -10,8 +10,10 @@ import (
 	"math/rand/v2"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -45,9 +47,20 @@ type searchFlags struct {
 	maxChars   int
 	chunks     bool
 	noDedupe   bool
+	scrapeTop  int
+	maxOutput  int
 }
 
 var sf searchFlags
+
+// Output defaults.
+const (
+	// DefaultMaxOutput bounds the printed output so an agent's tool-result
+	// window sees all of it: Claude Code shows only a preview past ~30 KB.
+	DefaultMaxOutput = 20000
+	// DefaultScrapeTop is how many of the best kept results --scrape fetches.
+	DefaultScrapeTop = 3
+)
 
 func addSearchFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
@@ -68,6 +81,8 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.chunks, "filter-chunks", false, "with --scrape, return only the chunks Jev finds relevant to the goal")
 	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap text per page")
 	f.IntVar(&sf.chunkChars, "chunk-chars", scrape.DefaultChunkChars, "with --filter-chunks, chunk size in characters; judged with 20% overlap")
+	f.IntVar(&sf.scrapeTop, "scrape-top", DefaultScrapeTop, "with --scrape, fetch only the N best-scoring kept results; 0 = all")
+	f.IntVar(&sf.maxOutput, "max-output", DefaultMaxOutput, "cap printed output in characters, trimming scraped content top-down; 0 = unlimited")
 	f.BoolVar(&sf.jsonOut, "json", false, "JSON output")
 	f.BoolVar(&sf.urlsOnly, "urls-only", false, "one URL per line")
 	f.BoolVarP(&sf.verbose, "verbose", "v", false, "show scores, dropped results, every cooldown notice")
@@ -214,6 +229,11 @@ type searchOptions struct {
 	ChunkChars   int
 	// NoDedupe skips the Jev duplicate pass.
 	NoDedupe bool
+	// ScrapeTop limits --scrape to the N best kept results; 0 means all.
+	ScrapeTop int
+	// MaxOutput caps the printed output in runes by trimming scraped
+	// content, never headers; 0 means unlimited.
+	MaxOutput int
 }
 
 // ask is what every Jev judge is given.
@@ -275,6 +295,12 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 	if f.chunkChars <= 0 {
 		return searchOptions{}, fmt.Errorf("--chunk-chars must be positive, got %d", f.chunkChars)
 	}
+	if f.scrapeTop < 0 {
+		return searchOptions{}, fmt.Errorf("--scrape-top must be 0 or more, got %d", f.scrapeTop)
+	}
+	if f.maxOutput < 0 {
+		return searchOptions{}, fmt.Errorf("--max-output must be 0 or more, got %d", f.maxOutput)
+	}
 
 	opts := searchOptions{
 		Query:        query,
@@ -290,6 +316,8 @@ func resolveSearchOptions(cfg *config.Config, f searchFlags, args []string) (sea
 		FilterChunks: f.chunks,
 		ChunkChars:   f.chunkChars,
 		NoDedupe:     f.noDedupe,
+		ScrapeTop:    f.scrapeTop,
+		MaxOutput:    f.maxOutput,
 	}
 	if f.num > 0 {
 		opts.Num = f.num
@@ -402,25 +430,30 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		}
 		raw := toRaw(results, engines)
 		if opts.Scrape && opts.Format != formatURLs {
-			urls := make([]string, len(raw))
-			fallback := make([]string, len(raw))
-			for i, r := range raw {
+			// Without scores, the fused order stands in for rank.
+			n := len(raw)
+			if opts.ScrapeTop > 0 && opts.ScrapeTop < n {
+				n = opts.ScrapeTop
+			}
+			urls := make([]string, n)
+			fallback := make([]string, n)
+			for i, r := range raw[:n] {
 				urls[i], fallback[i] = r.URL, r.Content
 			}
 			pages := scrapePages(ctx, opts, chunkFilter, urls, fallback)
-			for i := range raw {
+			for i := range pages {
 				raw[i].Page = &pages[i]
 			}
 			writeScrapeSummary(errOut, pages, opts)
 		}
-		return writeRaw(out, raw, opts.Format)
+		return writeRaw(out, errOut, raw, opts)
 	}
 
 	if len(results) == 0 {
 		if opts.Format == formatPretty {
 			fmt.Fprintf(errOut, "%s returned no results.\n", label)
 		}
-		return writeQualified(out, nil, opts)
+		return writeQualified(out, errOut, nil, opts)
 	}
 
 	q := newQualifier(cfg, jevKey)
@@ -460,15 +493,17 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 		writeSummary(errOut, label, ranked, opts, usage)
 	}
 	if opts.Scrape && opts.Format != formatURLs {
-		// Only kept results are worth fetching.
+		// Only the best kept results are worth fetching; ranked is in
+		// score order, and backfilled results were under the cut.
 		var idx []int
 		var urls, fallback []string
 		for i, r := range ranked {
-			if r.Kept {
-				idx = append(idx, i)
-				urls = append(urls, r.Result.URL)
-				fallback = append(fallback, r.Result.Content)
+			if !r.Kept || r.Backfilled || (opts.ScrapeTop > 0 && len(idx) >= opts.ScrapeTop) {
+				continue
 			}
+			idx = append(idx, i)
+			urls = append(urls, r.Result.URL)
+			fallback = append(fallback, r.Result.Content)
 		}
 		pages := scrapePages(ctx, opts, chunkFilter, urls, fallback)
 		for j, i := range idx {
@@ -478,7 +513,7 @@ func runPipeline(ctx context.Context, cfg *config.Config, opts searchOptions, ou
 			writeScrapeSummary(errOut, pages, opts)
 		}
 	}
-	return writeQualified(out, ranked, opts)
+	return writeQualified(out, errOut, ranked, opts)
 }
 
 // pageContent is a result's scraped text plus what happened to it.
@@ -501,6 +536,8 @@ type pageContent struct {
 	ChunksUnjudged int
 	// RawChars is the content length before chunk filtering.
 	RawChars int
+	// Trimmed counts the runes cut from Content by --max-output.
+	Trimmed int
 }
 
 // scrapePages fetches every URL (aligned with urls), caps each page's text,
@@ -893,6 +930,8 @@ type outputResult struct {
 	ChunksKept     *int   `json:"chunks_kept,omitempty"`
 	ChunksUnjudged *int   `json:"chunks_unjudged,omitempty"`
 	FilterError    string `json:"filter_error,omitempty"`
+	// CharsTrimmed is how much content --max-output cut from this result.
+	CharsTrimmed *int `json:"chars_trimmed,omitempty"`
 }
 
 // fillPage copies scraped content into the JSON fields.
@@ -900,12 +939,12 @@ func (o *outputResult) fillPage(p *pageContent) {
 	if p == nil {
 		return
 	}
-	o.Content, o.ScrapeError, o.ChunksTotal, o.ChunksKept, o.ChunksUnjudged, o.FilterError = pageFields(p)
+	o.Content, o.ScrapeError, o.ChunksTotal, o.ChunksKept, o.ChunksUnjudged, o.FilterError, o.CharsTrimmed = pageFields(p)
 	o.PDF = pdfFlag(p)
 }
 
 // pageFields flattens a pageContent into the shared JSON field values.
-func pageFields(p *pageContent) (content, scrapeErr string, total, kept, unjudged *int, filterErr string) {
+func pageFields(p *pageContent) (content, scrapeErr string, total, kept, unjudged *int, filterErr string, trimmed *int) {
 	content = p.Content
 	if p.Err != nil {
 		scrapeErr = p.Err.Error()
@@ -924,7 +963,11 @@ func pageFields(p *pageContent) (content, scrapeErr string, total, kept, unjudge
 	if p.FilterErr != nil {
 		filterErr = p.FilterErr.Error()
 	}
-	return content, scrapeErr, total, kept, unjudged, filterErr
+	if p.Trimmed > 0 {
+		t := p.Trimmed
+		trimmed = &t
+	}
+	return content, scrapeErr, total, kept, unjudged, filterErr, trimmed
 }
 
 // pdfFlag returns a pointer to true for PDF pages, nil otherwise, so the
@@ -987,13 +1030,14 @@ type rawResult struct {
 	ChunksKept     *int   `json:"chunks_kept,omitempty"`
 	ChunksUnjudged *int   `json:"chunks_unjudged,omitempty"`
 	FilterError    string `json:"filter_error,omitempty"`
+	CharsTrimmed   *int   `json:"chars_trimmed,omitempty"`
 }
 
 func (r *rawResult) fillPage() {
 	if r.Page == nil {
 		return
 	}
-	r.Content, r.ScrapeError, r.ChunksTotal, r.ChunksKept, r.ChunksUnjudged, r.FilterError = pageFields(r.Page)
+	r.Content, r.ScrapeError, r.ChunksTotal, r.ChunksKept, r.ChunksUnjudged, r.FilterError, r.CharsTrimmed = pageFields(r.Page)
 	r.PDF = pdfFlag(r.Page)
 }
 
@@ -1006,31 +1050,125 @@ func toRaw(results []provider.SearchResult, engines map[string][]string) []rawRe
 }
 
 // writeRaw prints unqualified provider results (--no-filter).
-func writeRaw(w io.Writer, results []rawResult, format outputFormat) error {
-	for i := range results {
-		results[i].fillPage()
-	}
-	switch format {
-	case formatJSON:
-		return writeJSON(w, results)
-	case formatURLs:
+func writeRaw(w, errOut io.Writer, results []rawResult, opts searchOptions) error {
+	if opts.Format == formatURLs {
 		for _, r := range results {
 			fmt.Fprintln(w, r.URL)
 		}
 		return nil
 	}
-	for i, r := range results {
-		fmt.Fprintf(w, "[%d] %s — %s\n    %s\n", i+1, titleOf(r.SearchResult), hostOf(r.URL), r.URL)
-		if len(r.Engines) > 0 {
-			fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))
+	pages := make([]*pageContent, len(results))
+	for i := range results {
+		pages[i] = results[i].Page
+	}
+	render := func(i int) string {
+		var b strings.Builder
+		writeRawResult(&b, i, results[i])
+		return b.String()
+	}
+	if opts.Format == formatJSON {
+		render = func(i int) string {
+			results[i].fillPage()
+			return marshalIndent(results[i])
 		}
-		if r.Snippet != "" {
-			fmt.Fprintf(w, "    %s\n", clipSnippet(r.Snippet, 240))
+	}
+	rendered, pagesTrimmed, charsTrimmed := budgetOutput(opts.MaxOutput, pages, render)
+	writeBudgetSummary(errOut, opts, pagesTrimmed, charsTrimmed)
+	if opts.Format == formatJSON {
+		for i := range results {
+			results[i].fillPage()
 		}
-		writeContent(w, r.Page)
-		fmt.Fprintln(w)
+		return writeJSON(w, results)
+	}
+	for _, s := range rendered {
+		io.WriteString(w, s)
 	}
 	return nil
+}
+
+func writeRawResult(w io.Writer, i int, r rawResult) {
+	fmt.Fprintf(w, "[%d] %s — %s\n    %s\n", i+1, titleOf(r.SearchResult), hostOf(r.URL), r.URL)
+	if len(r.Engines) > 0 {
+		fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))
+	}
+	if r.Snippet != "" {
+		fmt.Fprintf(w, "    %s\n", clipSnippet(r.Snippet, 240))
+	}
+	writeContent(w, r.Page)
+	fmt.Fprintln(w)
+}
+
+// budgetOutput trims scraped content so the rendered results fit in max
+// runes (0 = unlimited). Results are charged in order; a result whose
+// rendering does not fit has its content cut at a paragraph boundary until
+// it does, so headers always print and the best results keep their content.
+// It returns the renderings and how many pages and runes were trimmed.
+func budgetOutput(max int, pages []*pageContent, render func(i int) string) (out []string, pagesTrimmed, charsTrimmed int) {
+	out = make([]string, len(pages))
+	remaining := max
+	for i, p := range pages {
+		out[i] = render(i)
+		n := utf8.RuneCountInString(out[i])
+		for max > 0 && n > remaining && p != nil && p.Content != "" {
+			have := utf8.RuneCountInString(p.Content)
+			cut := cutAtBoundary(p.Content, have-(n-remaining))
+			p.Trimmed += have - utf8.RuneCountInString(cut)
+			p.Content = cut
+			out[i] = render(i)
+			n = utf8.RuneCountInString(out[i])
+		}
+		if p != nil && p.Trimmed > 0 {
+			pagesTrimmed++
+			charsTrimmed += p.Trimmed
+		}
+		remaining -= n
+	}
+	return out, pagesTrimmed, charsTrimmed
+}
+
+// cutAtBoundary returns at most n runes of s, ending at the last paragraph
+// break in that window, else the last line break, else the last space.
+func cutAtBoundary(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	cut := string(r[:n])
+	for _, sep := range []string{"\n\n", "\n", " "} {
+		if i := strings.LastIndex(cut, sep); i > 0 {
+			return strings.TrimSpace(cut[:i])
+		}
+	}
+	return strings.TrimSpace(cut)
+}
+
+func writeBudgetSummary(w io.Writer, opts searchOptions, pages, chars int) {
+	if pages == 0 || (opts.Format != formatPretty && !opts.Verbose) {
+		return
+	}
+	fmt.Fprintf(w, "--max-output %d: trimmed %s chars of scraped content from %d page(s)\n", opts.MaxOutput, commas(chars), pages)
+	if opts.Format == formatPretty {
+		fmt.Fprintln(w)
+	}
+}
+
+// commas formats n with thousands separators.
+func commas(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// marshalIndent renders v as writeJSON would, for measuring.
+func marshalIndent(v any) string {
+	var b strings.Builder
+	_ = writeJSON(&b, v)
+	return b.String()
 }
 
 // writeContent prints scraped page text under a separator, indented to sit
@@ -1065,7 +1203,7 @@ func writeContent(w io.Writer, p *pageContent) {
 	default:
 		fmt.Fprintf(w, "    --- %s (%d chars) ---\n", kind, len([]rune(p.Content)))
 	}
-	if p.Content == "" {
+	if p.Content == "" && p.Trimmed == 0 {
 		fmt.Fprintln(w, "    (no relevant chunks)")
 	}
 	for _, line := range strings.Split(p.Content, "\n") {
@@ -1075,12 +1213,15 @@ func writeContent(w io.Writer, p *pageContent) {
 		}
 		fmt.Fprintf(w, "    %s\n", line)
 	}
+	if p.Trimmed > 0 {
+		fmt.Fprintf(w, "    … (%s more chars trimmed by --max-output)\n", commas(p.Trimmed))
+	}
 	fmt.Fprintln(w, "    --- end ---")
 }
 
 // writeQualified prints ranked results. Non-verbose output includes only kept
 // results; verbose output includes everything with its keep/drop decision.
-func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) error {
+func writeQualified(w, errOut io.Writer, ranked []rankedResult, opts searchOptions) error {
 	visible := ranked
 	if !opts.Verbose {
 		visible = visible[:0:0]
@@ -1090,15 +1231,7 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 			}
 		}
 	}
-
-	switch opts.Format {
-	case formatJSON:
-		items := make([]outputResult, 0, len(visible))
-		for _, r := range visible {
-			items = append(items, toOutput(r, opts.Verbose))
-		}
-		return writeJSON(w, items)
-	case formatURLs:
+	if opts.Format == formatURLs {
 		for _, r := range visible {
 			if r.Kept {
 				fmt.Fprintln(w, r.Result.URL)
@@ -1107,55 +1240,80 @@ func writeQualified(w io.Writer, ranked []rankedResult, opts searchOptions) erro
 		return nil
 	}
 
+	pages := make([]*pageContent, len(visible))
 	for i, r := range visible {
-		fmt.Fprintf(w, "[%d] %s — %s\n    %s\n", i+1, titleOf(r.Result), hostOf(r.Result.URL), r.Result.URL)
-		switch {
-		case r.Err != nil:
-			fmt.Fprintf(w, "    ! Jev error: %v\n", r.Err)
-		case r.Score != nil:
-			fmt.Fprintf(w, "    Score: %.1f/10\n", r.Score.Scaled())
-			if opts.Verbose {
-				fmt.Fprintf(w, "    Confidence: %.2f", r.Score.Confidence)
-				if len(r.Score.Probabilities) > 0 {
-					fmt.Fprintf(w, "  Probabilities: %s", r.Score.FormatProbabilities())
-				}
-				fmt.Fprintln(w)
-			}
-		case r.Noul != nil:
-			fmt.Fprintf(w, "    P(yes): %.2f\n", r.Noul.Probability)
-			if opts.Verbose {
-				fmt.Fprintf(w, "    Confidence: %.2f\n", r.Noul.Confidence())
-			}
+		pages[i] = r.Page
+	}
+	render := func(i int) string {
+		var b strings.Builder
+		writeQualifiedResult(&b, i, visible[i], opts)
+		return b.String()
+	}
+	if opts.Format == formatJSON {
+		render = func(i int) string { return marshalIndent(toOutput(visible[i], opts.Verbose)) }
+	}
+	rendered, pagesTrimmed, charsTrimmed := budgetOutput(opts.MaxOutput, pages, render)
+	writeBudgetSummary(errOut, opts, pagesTrimmed, charsTrimmed)
+	if opts.Format == formatJSON {
+		items := make([]outputResult, 0, len(visible))
+		for _, r := range visible {
+			items = append(items, toOutput(r, opts.Verbose))
 		}
-		if len(r.Engines) > 0 {
-			fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))
-		}
-		for _, d := range r.Duplicates {
-			fmt.Fprintf(w, "    Duplicate: %s\n", d.URL)
-		}
-		if opts.Verbose {
-			switch {
-			case r.Backfilled:
-				fmt.Fprintf(w, "    ✓ Kept (below the %g cut; backfilled to reach --min-results %d)\n", opts.MinScore, opts.MinResults)
-			case r.Kept:
-				fmt.Fprintln(w, "    ✓ Kept")
-			case r.Err != nil:
-				fmt.Fprintln(w, "    ✗ Filtered (not scored)")
-			default:
-				fmt.Fprintf(w, "    ✗ Filtered (below %g threshold)\n", opts.MinScore)
-			}
-		}
-		if r.Result.Snippet != "" {
-			limit := 240
-			if opts.Verbose {
-				limit = 600
-			}
-			fmt.Fprintf(w, "    %s\n", clipSnippet(r.Result.Snippet, limit))
-		}
-		writeContent(w, r.Page)
-		fmt.Fprintln(w)
+		return writeJSON(w, items)
+	}
+	for _, s := range rendered {
+		io.WriteString(w, s)
 	}
 	return nil
+}
+
+func writeQualifiedResult(w io.Writer, i int, r rankedResult, opts searchOptions) {
+	fmt.Fprintf(w, "[%d] %s — %s\n    %s\n", i+1, titleOf(r.Result), hostOf(r.Result.URL), r.Result.URL)
+	switch {
+	case r.Err != nil:
+		fmt.Fprintf(w, "    ! Jev error: %v\n", r.Err)
+	case r.Score != nil:
+		fmt.Fprintf(w, "    Score: %.1f/10\n", r.Score.Scaled())
+		if opts.Verbose {
+			fmt.Fprintf(w, "    Confidence: %.2f", r.Score.Confidence)
+			if len(r.Score.Probabilities) > 0 {
+				fmt.Fprintf(w, "  Probabilities: %s", r.Score.FormatProbabilities())
+			}
+			fmt.Fprintln(w)
+		}
+	case r.Noul != nil:
+		fmt.Fprintf(w, "    P(yes): %.2f\n", r.Noul.Probability)
+		if opts.Verbose {
+			fmt.Fprintf(w, "    Confidence: %.2f\n", r.Noul.Confidence())
+		}
+	}
+	if len(r.Engines) > 0 {
+		fmt.Fprintf(w, "    Engines: %s\n", strings.Join(r.Engines, ", "))
+	}
+	for _, d := range r.Duplicates {
+		fmt.Fprintf(w, "    Duplicate: %s\n", d.URL)
+	}
+	if opts.Verbose {
+		switch {
+		case r.Backfilled:
+			fmt.Fprintf(w, "    ✓ Kept (below the %g cut; backfilled to reach --min-results %d)\n", opts.MinScore, opts.MinResults)
+		case r.Kept:
+			fmt.Fprintln(w, "    ✓ Kept")
+		case r.Err != nil:
+			fmt.Fprintln(w, "    ✗ Filtered (not scored)")
+		default:
+			fmt.Fprintf(w, "    ✗ Filtered (below %g threshold)\n", opts.MinScore)
+		}
+	}
+	if r.Result.Snippet != "" {
+		limit := 240
+		if opts.Verbose {
+			limit = 600
+		}
+		fmt.Fprintf(w, "    %s\n", clipSnippet(r.Result.Snippet, limit))
+	}
+	writeContent(w, r.Page)
+	fmt.Fprintln(w)
 }
 
 func writeJSON(w io.Writer, v any) error {

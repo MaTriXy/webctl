@@ -1,12 +1,18 @@
 # Scraping
 
-`--scrape` fetches each kept result's page and reduces it to text. `--filter-chunks` keeps only the parts worth quoting.
+`--scrape` fetches the best kept results' pages and reduces them to text. `--filter-chunks` keeps only the parts worth quoting.
 
 Agents should use `--scrape --filter-chunks` instead of reading pages themselves most of the time: webctl does the fetch, and only the chunks Jev judges relevant to the query and goal are returned, so a long thread, PDF, or article costs a fraction of the tokens. Read a page directly only when you need it whole.
 
 ## Fetching
 
-Pages are fetched with a 10s timeout, 4 at a time, and converted from HTML to text (scripts, styles, navigation elements dropped; block structure kept as line breaks). Plain text and JSON pass through. A page that cannot be fetched (403 bot wall, timeout) falls back to the provider's own excerpt, marked in the output.
+Only the `--scrape-top` highest-scoring kept results are fetched (default 3; 0 = all). The rest print their snippet, which is usually enough to decide whether to ask for more. Results backfilled by `--min-results` were under the score cut and are never fetched.
+
+Pages are fetched with a 10s timeout, 4 at a time, and converted from HTML to text (scripts, styles, navigation elements dropped; block structure kept as line breaks). Plain text passes through. A page that cannot be fetched (403 bot wall, timeout) falls back to the provider's own excerpt, marked in the output.
+
+A body that is JSON (by content type, or because it starts with `{` or `[` and parses), such as a docs page served as data, is not prose: it is reported as the fetch error `page is JSON, not prose` and the provider's excerpt is used instead.
+
+Boilerplate at the edges of a page is stripped before chunking. A run of four or more short lines (≤ 40 characters) or link rows (`new | past | comments | ask`, tickers joined by `·` or `•`) at the very start or very end of the text is removed: site headers, "Skip to main content", menus, footers. Runs in the middle are left alone, so lists and headings survive; a short line right before the first prose is kept as its heading; a trailing run must contain a link row, so a closing list is not mistaken for a footer; and a page that is mostly short lines is kept whole rather than emptied.
 
 ## PDFs
 
@@ -24,6 +30,10 @@ Chunks are packed into batches that stay under an estimated-token budget and sen
 
 Failure is contained. If some batches fail, the chunks they covered are kept unfiltered rather than dropped — losing a verdict must never silently delete page content — and the run reports `k/n chunks kept, u unjudged` with `chunks_unjudged` in JSON. Only when every batch fails does the page fall back to its whole unfiltered text, reported as before.
 
+## Output budget
+
+`--max-output` caps the whole printed output (default 20,000 characters; 0 = unlimited), because an agent's tool-result window is small: Claude Code shows only a 2 KB preview of output past about 30 KB. Every kept result's header (title, URL, score, snippet) always prints; scraped content is then allotted to results in score order, and a page that does not fit is cut at a paragraph boundary with a marker, `… (12,400 more chars trimmed by --max-output)`. No result is dropped for the budget, only its content. In JSON the `content` fields are bounded the same way and `chars_trimmed` reports the cut. A summary line on stderr says how much was trimmed.
+
 ## Output
 
-Terminal: a `--- content (k/n chunks kept, c chars) ---` header per result. JSON: `content`, `scrape_error`, `chunks_total`, `chunks_kept`, `filter_error`.
+Terminal: a `--- content (k/n chunks kept, c chars) ---` header per result. JSON: `content`, `scrape_error`, `chunks_total`, `chunks_kept`, `filter_error`, `chars_trimmed`.

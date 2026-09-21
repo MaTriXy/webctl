@@ -18,8 +18,8 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 3. **Score.** Jev scores each result 0–10 on topic and source quality. See `filtering`.
 4. **Near-dedupe.** MinHash proposes look-alike pairs; Jev confirms them in one request; groups keep the best copy.
 5. **Threshold.** Results below `min_score` (default 6) are dropped. `--verbose` shows them anyway, marked.
-6. **Scrape** (recommended for agents). Kept pages are fetched; `--filter-chunks` returns only the chunks relevant to the goal, so prefer `--scrape --filter-chunks` over reading pages yourself. See `scraping`.
-7. **Print.** Terminal text, `--json`, or `--urls-only`.
+6. **Scrape** (recommended for agents). The top `--scrape-top` kept pages are fetched; `--filter-chunks` returns only the chunks relevant to the goal, so prefer `--scrape --filter-chunks` over reading pages yourself. See `scraping`.
+7. **Print.** Terminal text, `--json`, or `--urls-only`, within `--max-output` characters.
 
 ## Flags
 
@@ -40,6 +40,8 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 | `--no-dedupe` | skip the Jev near-duplicate pass (exact dedupe still runs) |
 | `--scrape` | fetch each kept result's page text; prefer this over fetching pages yourself |
 | `--filter-chunks` | with `--scrape`, return only the chunks Jev judges relevant to the goal |
+| `--scrape-top N` | with `--scrape`, fetch only the N best-scoring kept results (default 3; 0 = all); the rest print their snippet; backfilled results are never fetched |
+| `--max-output N` | cap the printed output at N characters (default 20000; 0 = unlimited); headers always print, scraped content is allotted top-down and cut at a paragraph boundary with a marker |
 | `--max-chars N` | with `--scrape`, cap text per page (default 50000) |
 | `--chunk-chars N` | with `--filter-chunks`, chunk size in characters (default 2000); each chunk is judged with 20% overlap from the previous one |
 | `--json` | JSON array on stdout; diagnostics stay on stderr |
@@ -50,9 +52,9 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 
 ## Output
 
-Terminal: one block per kept result with title, host, URL, score out of 10, engines, snippet, and `Duplicate:` lines for folded copies. `--verbose` adds Jev's confidence and the per-level probabilities. A summary line on stderr: `exa+parallel: 15 results → 6 kept (min score 1.8)`, then `N duplicate(s) folded` and Jev token usage.
+Terminal: one block per kept result with title, host, URL, score out of 10, engines, snippet, and `Duplicate:` lines for folded copies. `--verbose` adds Jev's confidence and the per-level probabilities. A summary line on stderr: `exa+parallel: 15 results → 6 kept (min score 1.8)`, then `N duplicate(s) folded` and Jev token usage; with `--scrape`, a scrape summary and, when content was cut, `--max-output 20000: trimmed 31,200 chars of scraped content from 2 page(s)`.
 
-`--json`: an array of objects with `title`, `url`, `snippet`, `score` (0–10), `kept`, `engines`, `duplicates`, and with `--verbose` `confidence` and `probabilities`, and with `--scrape` `content`, `scrape_error`, `chunks_total`, `chunks_kept`, `filter_error`. With `--noul`: `yes` and `probability` instead of score fields. With `--no-filter`: `title`, `url`, `snippet`, `content`, `engines`.
+`--json`: an array of objects with `title`, `url`, `snippet`, `score` (0–10), `kept`, `engines`, `duplicates`, and with `--verbose` `confidence` and `probabilities`, and with `--scrape` `content`, `scrape_error`, `chunks_total`, `chunks_kept`, `filter_error`, and `chars_trimmed` when `--max-output` cut the content. With `--noul`: `yes` and `probability` instead of score fields. With `--no-filter`: `title`, `url`, `snippet`, `content`, `engines`.
 
 ## Exit codes
 

@@ -141,3 +141,42 @@ func TestTruncate(t *testing.T) {
 		t.Errorf("rune truncate = %q", got)
 	}
 }
+
+func TestFetchRejectsJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/typed", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"title": "Redis docs"}`)
+	})
+	mux.HandleFunc("/untyped", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = io.WriteString(w, "\n [{\"id\": 1}, {\"id\": 2}] ")
+	})
+	mux.HandleFunc("/brace", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = io.WriteString(w, "{not json} but a sentence long enough to keep")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	f := &Fetcher{}
+	for _, path := range []string{"/typed", "/untyped"} {
+		if _, err := f.Fetch(context.Background(), srv.URL+path); err == nil || err.Error() != "page is JSON, not prose" {
+			t.Errorf("%s err = %v", path, err)
+		}
+	}
+	if got, err := f.Fetch(context.Background(), srv.URL+"/brace"); err != nil || !strings.HasPrefix(got, "{not json}") {
+		t.Errorf("brace = %q, %v", got, err)
+	}
+}
+
+func TestFetchStripsBoilerplate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, "<nav><a>new</a> | <a>past</a> | <a>ask</a></nav><p>login</p><p>Settings</p><p>Help | About</p><p>"+prose+"</p>")
+	}))
+	t.Cleanup(srv.Close)
+	got, err := (&Fetcher{}).Fetch(context.Background(), srv.URL)
+	if err != nil || got != prose {
+		t.Errorf("got %q, %v", got, err)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dorkitude/webctl/internal/config"
 	"github.com/dorkitude/webctl/internal/jev"
@@ -1383,5 +1384,191 @@ func TestSearchFilterChunksOverlapAndChunkChars(t *testing.T) {
 
 	if _, _, err := h.run("--scrape", "--filter-chunks", "--chunk-chars", "0", "q"); err == nil || !strings.Contains(err.Error(), "--chunk-chars") {
 		t.Errorf("zero chunk size should be rejected: %v", err)
+	}
+}
+
+func TestSearchScrapeTop(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.scores = map[string]float64{paper.URL: 2.9, wiki.URL: 2.4, blog.URL: 2.0}
+	fs := h.withScraper(map[string]string{paper.URL: "p", wiki.URL: "w", blog.URL: "b"}, nil)
+
+	// Default: the three kept results all fit under --scrape-top 3.
+	out, _, err := h.run("--scrape", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(fs.gotURLs, ",") != paper.URL+","+wiki.URL+","+blog.URL {
+		t.Errorf("default fetched %v", fs.gotURLs)
+	}
+
+	// --scrape-top 2 fetches the two best; the third keeps its snippet only.
+	fs.gotURLs = nil
+	out, _, err = h.run("--scrape", "--scrape-top", "2", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(fs.gotURLs, ",") != paper.URL+","+wiki.URL {
+		t.Errorf("top 2 fetched %v", fs.gotURLs)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	if len(items) != 3 || items[0].Content != "p" || items[1].Content != "w" || items[2].Content != "" || items[2].Snippet == "" {
+		t.Errorf("items = %+v", items)
+	}
+
+	// 0 means every kept result.
+	fs.gotURLs = nil
+	if _, _, err := h.run("--scrape", "--scrape-top", "0", "--urls-only", "q"); err != nil {
+		t.Fatal(err)
+	}
+	fs.gotURLs = nil
+	if _, _, err := h.run("--scrape", "--scrape-top", "0", "--json", "q"); err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.gotURLs) != 3 {
+		t.Errorf("top 0 fetched %v", fs.gotURLs)
+	}
+
+	// --no-filter takes the fused order.
+	fs.gotURLs = nil
+	out, _, err = h.run("--scrape", "--no-filter", "--scrape-top", "1", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := mustJSON[[]rawResult](t, out)
+	if strings.Join(fs.gotURLs, ",") != blog.URL || len(raw) != 3 || raw[0].Content != "b" || raw[1].Content != "" {
+		t.Errorf("no-filter fetched %v, raw = %+v", fs.gotURLs, raw)
+	}
+
+	if _, _, err := h.run("--scrape", "--scrape-top", "-1", "q"); err == nil || !strings.Contains(err.Error(), "--scrape-top") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestSearchScrapeSkipsBackfilled(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.qual.scores = map[string]float64{paper.URL: 2.9, wiki.URL: 1.4, blog.URL: 0.3}
+	fs := h.withScraper(map[string]string{paper.URL: "p", wiki.URL: "w"}, nil)
+	out, _, err := h.run("--scrape", "--min-results", "2", "--json", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(fs.gotURLs, ",") != paper.URL {
+		t.Errorf("fetched %v", fs.gotURLs)
+	}
+	for _, it := range mustJSON[[]outputResult](t, out) {
+		if it.Backfilled && it.Content != "" {
+			t.Errorf("backfilled result was scraped: %+v", it)
+		}
+	}
+}
+
+func TestSearchMaxOutput(t *testing.T) {
+	h := newHarness(t, allKeys())
+	h.withScraper(map[string]string{paper.URL: bigPage, wiki.URL: bigPage}, nil)
+
+	out, errOut, err := h.run("--scrape", "--max-output", "3000", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := utf8.RuneCountInString(out); n > 3000 {
+		t.Errorf("output is %d runes, over the 3000 budget", n)
+	}
+	// Both headers print; the first page keeps most of the budget, the
+	// second is cut, and both are marked.
+	for _, want := range []string{paper.URL, wiki.URL, chunkA, "more chars trimmed by --max-output)\n    --- end ---"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "trimmed by --max-output") != 2 {
+		t.Errorf("expected both pages marked:\n%s", out)
+	}
+	if !strings.Contains(errOut, "--max-output 3000: trimmed ") || !strings.Contains(errOut, " chars of scraped content from 2 page(s)") {
+		t.Errorf("summary = %q", errOut)
+	}
+
+	// JSON: content fields are bounded and report what was cut.
+	out, errOut, err = h.run("--scrape", "--max-output", "3000", "--json", "--verbose", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := mustJSON[[]outputResult](t, out)
+	total := 0
+	for _, it := range items {
+		total += utf8.RuneCountInString(it.Content)
+	}
+	if total > 3000 || items[0].CharsTrimmed == nil || items[1].CharsTrimmed == nil {
+		t.Errorf("json content total %d, items = %+v", total, items)
+	}
+	if utf8.RuneCountInString(bigPage)-*items[0].CharsTrimmed != utf8.RuneCountInString(items[0].Content) {
+		t.Errorf("chars_trimmed %d does not account for %d → %d", *items[0].CharsTrimmed, utf8.RuneCountInString(bigPage), utf8.RuneCountInString(items[0].Content))
+	}
+	if !strings.Contains(errOut, "--max-output 3000") {
+		t.Errorf("json verbose summary = %q", errOut)
+	}
+
+	// 0 is unlimited; the default leaves this small run untouched.
+	for _, args := range [][]string{{"--scrape", "--max-output", "0", "q"}, {"--scrape", "q"}} {
+		out, errOut, err := h.run(args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "trimmed") || strings.Contains(errOut, "trimmed") || strings.Count(out, chunkC) != 2 {
+			t.Errorf("%v trimmed:\n%s%s", args, out, errOut)
+		}
+	}
+	if _, _, err := h.run("--max-output", "-5", "q"); err == nil || !strings.Contains(err.Error(), "--max-output") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestBudgetOutput(t *testing.T) {
+	pages := []*pageContent{nil, {Content: "one two.\n\nthree four.\n\nfive six."}, {Content: "seven eight."}}
+	render := func(i int) string {
+		if pages[i] == nil {
+			return "header\n"
+		}
+		return "header\n" + pages[i].Content + "\n"
+	}
+	rendered, n, chars := budgetOutput(31, pages, render)
+	if n != 2 || chars != 36 || pages[1].Content != "one two." || pages[2].Content != "" {
+		t.Errorf("n=%d chars=%d pages=%+v", n, chars, []pageContent{*pages[1], *pages[2]})
+	}
+	total := 0
+	for _, s := range rendered {
+		total += len(s)
+	}
+	if total > 31 || rendered[0] != "header\n" {
+		t.Errorf("rendered %d runes: %q", total, rendered)
+	}
+	// Unlimited leaves everything alone.
+	pages[1].Content, pages[1].Trimmed = "x\n\ny", 0
+	if _, n, _ := budgetOutput(0, pages[:2], render); n != 0 || pages[1].Content != "x\n\ny" {
+		t.Errorf("unlimited trimmed: n=%d %q", n, pages[1].Content)
+	}
+}
+
+func TestCutAtBoundaryAndCommas(t *testing.T) {
+	for _, c := range []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"a b.\n\nc d.\n\ne f.", 12, "a b.\n\nc d."},
+		{"a b.\n\nc d.\n\ne f.", 8, "a b."},
+		{"line one\nline two", 12, "line one"},
+		{"word word word", 9, "word"},
+		{"nospace", 3, "nos"},
+		{"short", 10, "short"},
+		{"anything", 0, ""},
+	} {
+		if got := cutAtBoundary(c.s, c.n); got != c.want {
+			t.Errorf("cutAtBoundary(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
+		}
+	}
+	for n, want := range map[int]string{0: "0", 999: "999", 1000: "1,000", 12400: "12,400", 1234567: "1,234,567"} {
+		if got := commas(n); got != want {
+			t.Errorf("commas(%d) = %q", n, got)
+		}
 	}
 }

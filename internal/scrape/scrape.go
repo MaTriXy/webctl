@@ -4,6 +4,7 @@ package scrape
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -69,8 +70,9 @@ func (f *Fetcher) maxChars() int {
 }
 
 // Fetch downloads url and returns its text content, truncated to MaxChars.
-// HTML is converted to text; plain text is passed through; PDFs yield their
-// text layer; other content types are rejected. A Reddit challenge page is
+// HTML is converted to text and stripped of leading and trailing menu runs;
+// plain text is passed through; PDFs yield their text layer; JSON and other
+// content types are rejected. A Reddit challenge page is
 // solved and the real page fetched in its place.
 func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 	text, _, err := f.FetchPage(ctx, url)
@@ -100,11 +102,16 @@ func (f *Fetcher) FetchPage(ctx context.Context, url string) (string, bool, erro
 		if text, err = PDFToText(body); err != nil {
 			return "", true, err
 		}
+	case IsJSON(mediaType, body):
+		// An API response or a docs page served as data: the provider's
+		// excerpt is better prose than this.
+		return "", false, errors.New("page is JSON, not prose")
 	case isHTML(mediaType):
 		if text, err = HTMLToText(bytes.NewReader(body)); err != nil {
 			return "", false, err
 		}
-	case strings.HasPrefix(mediaType, "text/"), mediaType == "application/json":
+		text = StripBoilerplate(text)
+	case strings.HasPrefix(mediaType, "text/"):
 		text = normalizeText(string(body))
 	default:
 		return "", false, fmt.Errorf("unsupported content type %q", mediaType)
@@ -152,6 +159,19 @@ func (f *Fetcher) solveURL(rawURL string, body []byte) (string, error) {
 		return "", fmt.Errorf("parse url: %w", err)
 	}
 	return solveRedditChallenge(u, body)
+}
+
+// IsJSON reports whether a body is JSON: by content type, or because it
+// starts with { or [ and parses.
+func IsJSON(mediaType string, body []byte) bool {
+	if mediaType == "application/json" || strings.HasSuffix(mediaType, "+json") {
+		return true
+	}
+	b := bytes.TrimSpace(body)
+	if len(b) == 0 || (b[0] != '{' && b[0] != '[') {
+		return false
+	}
+	return json.Valid(b)
 }
 
 func isHTML(mediaType string) bool {

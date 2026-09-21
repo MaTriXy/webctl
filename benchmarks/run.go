@@ -45,6 +45,9 @@ type Options struct {
 	LogDir string
 	// Resume, if set, is an existing run whose completed cells are kept.
 	Resume *Run
+	// RerunArms lists arm names whose cells are discarded from Resume, so
+	// they run again (and the case is judged again) against a changed tool.
+	RerunArms []string
 	// Progress receives one line per event; nil is silent.
 	Progress io.Writer
 	// WebctlVersion is recorded in the run file.
@@ -83,9 +86,23 @@ func Execute(ctx context.Context, opts Options) (*Run, error) {
 	}
 	if opts.Resume != nil {
 		run.Started = opts.Resume.Started
+		rerun := map[string]bool{}
+		for _, a := range opts.RerunArms {
+			rerun[a] = true
+		}
 		for cn, arms := range opts.Resume.Results {
 			run.Results[cn] = map[string]*Result{}
 			for an, r := range arms {
+				if rerun[an] {
+					continue
+				}
+				if len(rerun) > 0 && r != nil {
+					// Other arms keep their answers but are judged again
+					// alongside the fresh ones, so grades stay comparable.
+					cp := *r
+					cp.Judge = nil
+					r = &cp
+				}
 				run.Results[cn][an] = r
 			}
 		}

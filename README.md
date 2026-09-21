@@ -203,13 +203,14 @@ webctl search "q" --no-filter                              # skip Jev (works wit
 
 ### Scraping
 
-Fetch page text for each kept result; `--filter-chunks` keeps only the chunks Jev says are relevant (`--chunk-chars`, default 2000; judged with 20% overlap, output without it). Agents: prefer this over reading pages yourself most of the time, since only the relevant chunks reach your context. [docs/scraping.md](docs/scraping.md)
+Fetch page text for the best kept results (`--scrape-top`, default 3); `--filter-chunks` keeps only the chunks Jev says are relevant (`--chunk-chars`, default 2000; judged with 20% overlap, output without it). Menu runs at the page edges are stripped, JSON pages fall back to the excerpt, and `--max-output` (default 20000 chars) trims content top-down so the whole result fits an agent's tool window. Agents: prefer this over reading pages yourself most of the time, since only the relevant chunks reach your context. [docs/scraping.md](docs/scraping.md)
 
 ```bash
 webctl search "q" --scrape
 webctl search "q" --scrape --filter-chunks
 webctl search "q" --scrape --max-chars 20000  # default 50000 per page
 webctl search "q" --scrape --filter-chunks --chunk-chars 1000  # default 2000
+webctl search "q" --scrape --scrape-top 5 --max-output 40000  # defaults 3 and 20000
 ```
 
 ### Benchmarks
