@@ -38,7 +38,7 @@ The pipeline: search providers → fold exact duplicates → Jev scores each res
 | `--batch` | score every result in one Jev request instead of one request per result |
 | `--no-filter` | skip Jev; print provider results as fused |
 | `--no-dedupe` | skip the Jev near-duplicate pass (exact dedupe still runs) |
-| `--scrape` | fetch each kept result's page text; prefer this over fetching pages yourself |
+| `--scrape` | fetch page text for the top results; use with `--filter-chunks` whenever you would otherwise read a whole page |
 | `--filter-chunks` | with `--scrape`, return only the chunks Jev judges relevant to the goal |
 | `--scrape-top N` | with `--scrape`, fetch only the N best-scoring kept results (default 3; 0 = all); the rest print their snippet; backfilled results are never fetched |
 | `--max-output N` | cap the printed output at N characters (default 20000; 0 = unlimited); headers always print, scraped content is allotted top-down and cut at a paragraph boundary with a marker |

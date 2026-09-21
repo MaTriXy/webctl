@@ -77,7 +77,7 @@ func addSearchFlags(cmd *cobra.Command) {
 	f.BoolVar(&sf.batch, "batch", false, "score all results in one Jev request")
 	f.BoolVar(&sf.noFilter, "no-filter", false, "skip Jev; print provider results")
 	f.BoolVar(&sf.noDedupe, "no-dedupe", false, "skip the Jev near-duplicate pass")
-	f.BoolVar(&sf.scrape, "scrape", false, "fetch each kept result's page text (prefer with --filter-chunks over reading pages yourself)")
+	f.BoolVar(&sf.scrape, "scrape", false, "fetch page text for the top results; use with --filter-chunks whenever you would otherwise read a whole page")
 	f.BoolVar(&sf.chunks, "filter-chunks", false, "with --scrape, return only the chunks Jev finds relevant to the goal")
 	f.IntVar(&sf.maxChars, "max-chars", scrape.DefaultMaxChars, "with --scrape, cap text per page")
 	f.IntVar(&sf.chunkChars, "chunk-chars", scrape.DefaultChunkChars, "with --filter-chunks, chunk size in characters; judged with 20% overlap")

@@ -24,7 +24,7 @@ I originally built this to give my Pi/Kimi K3 chat stack something akin to what
 
 By default, `webctl` will try 3 web search backends.  Each result set is passed (with the original query and goal) to Jev for scoring;  the high-scoring subset is then deduped by some fancy math (plus Jev).  This means your Claude (or whatever) doesn't have to read as much junk, which saves you $$ (sorry, Anthropic!).
 
-Agents should use `--scrape --filter-chunks` instead of fetching pages themselves most of the time.  webctl fetches each kept page, parses out the textual content, divides it into chunks, and sends batches of those chunks (plus the original query and goal) to Jev for scoring.  Only the relevant chunks come back, so that is all that lands in the agent's context.  For some workloads (think long PDFs, Reddit/StackOverflow comment threads, developer docs, entire Wikipedia articles, etc), this can save an *enormous* number of chat tokens compared to reading the page.
+The snippets are usually enough. When they are not, and the agent would otherwise read a whole page, `--scrape --filter-chunks` is the cheaper move: webctl fetches the top results, parses out the textual content, divides it into chunks, and sends those chunks (plus the original query and goal) to Jev for scoring. Only the relevant chunks come back, so that is all that lands in the agent's context. For long PDFs, Reddit/StackOverflow comment threads, earnings transcripts, and entire Wikipedia articles, this saves an *enormous* number of tokens compared to reading the page; for a short fact it adds nothing (see [benchmarks/README.md](benchmarks/README.md)).
 
 Feel free to submit a PR if I missed something!  And if I miss the PR, hit me up [@dorkitude](https://x.com/dorkitude) and I'll get to it ASAP.
 
@@ -203,7 +203,7 @@ webctl search "q" --no-filter                              # skip Jev (works wit
 
 ### Scraping
 
-Fetch page text for the best kept results (`--scrape-top`, default 3); `--filter-chunks` keeps only the chunks Jev says are relevant (`--chunk-chars`, default 2000; judged with 20% overlap, output without it). Menu runs at the page edges are stripped, JSON pages fall back to the excerpt, and `--max-output` (default 20000 chars) trims content top-down so the whole result fits an agent's tool window. Agents: prefer this over reading pages yourself most of the time, since only the relevant chunks reach your context. [docs/scraping.md](docs/scraping.md)
+Fetch page text for the best kept results (`--scrape-top`, default 3); `--filter-chunks` keeps only the chunks Jev says are relevant (`--chunk-chars`, default 2000; judged with 20% overlap, output without it). Menu runs at the page edges are stripped, JSON pages fall back to the excerpt, and `--max-output` (default 20000 chars) trims content top-down so the whole result fits an agent's tool window. Agents: use it whenever you are about to read a whole page; the snippets alone are usually enough. [docs/scraping.md](docs/scraping.md)
 
 ```bash
 webctl search "q" --scrape

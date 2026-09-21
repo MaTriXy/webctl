@@ -2,7 +2,7 @@
 
 `--scrape` fetches the best kept results' pages and reduces them to text. `--filter-chunks` keeps only the parts worth quoting.
 
-Agents should use `--scrape --filter-chunks` instead of reading pages themselves most of the time: webctl does the fetch, and only the chunks Jev judges relevant to the query and goal are returned, so a long thread, PDF, or article costs a fraction of the tokens. Read a page directly only when you need it whole.
+When to use it: whenever you would otherwise read a whole page. The snippets alone answer most questions (benchmarks: quality 9.40 without scraping versus 9.47 with, at a third of the payload). Scraping earns its cost on long documents, earnings transcripts, and comment threads, where the answer is a paragraph deep inside the page: webctl does the fetch and only the chunks Jev judges relevant to the query and goal are returned. Read a page directly only when you need it whole.
 
 ## Fetching
 
