@@ -21,6 +21,7 @@ type armStats struct {
 	Webctl   int
 	Searches int
 	Violate  int
+	Payload  int // chars of search-tool results
 }
 
 func (s armStats) meanWall() float64 {
@@ -76,6 +77,7 @@ func aggregate(run *Run, filter func(Case) bool) map[string]*armStats {
 			s.Webctl += r.WebctlCalls
 			s.Searches += r.SearchCalls
 			s.Violate += r.Violations
+			s.Payload += r.PayloadChars
 			if r.Judge != nil {
 				s.Judged++
 				s.Score += r.Judge.Score
@@ -104,7 +106,7 @@ func WriteReport(w io.Writer, run *Run) {
 	pairs := pairArms(run.Arms)
 	for _, p := range pairs {
 		n, wc := all[p.native.Name], all[p.webctl.Name]
-		label := p.native.Harness + " " + p.native.Model
+		label := p.native.Harness + " " + p.native.Model + " → " + string(p.webctl.Mode)
 		row := func(metric string, nv, wv float64, format string, lowerIsBetter bool) {
 			change := "n/a"
 			if nv != 0 {
@@ -116,6 +118,11 @@ func WriteReport(w io.Writer, run *Run) {
 		}
 		row("wall clock (s, mean)", n.meanWall(), wc.meanWall(), "%.1f", true)
 		row("tokens (mean per case)", n.meanTokens(), wc.meanTokens(), "%.0f", true)
+		if n.Payload > 0 {
+			row("search payload tokens (mean, chars/4)", meanInt(n.Payload, n.N)/4, meanInt(wc.Payload, wc.N)/4, "%.0f", true)
+		} else {
+			fmt.Fprintf(w, "| %s | search payload tokens (mean, chars/4) | hidden | %.0f | |\n", label, meanInt(wc.Payload, wc.N)/4)
+		}
 		row("output tokens (mean)", meanInt(n.Tokens.Output, n.N), meanInt(wc.Tokens.Output, wc.N), "%.0f", true)
 		if n.Cost > 0 || wc.Cost > 0 {
 			row("cost USD (mean)", n.meanCost(), wc.meanCost(), "%.3f", true)
@@ -128,15 +135,15 @@ func WriteReport(w io.Writer, run *Run) {
 
 	// Per-arm totals.
 	fmt.Fprintf(w, "## Per arm\n\n")
-	fmt.Fprintf(w, "| arm | cases | failed | wall s (mean) | tokens (mean) | input | cache read | output | cost USD | quality | sourced | tool calls | violations |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	fmt.Fprintf(w, "| arm | cases | failed | wall s (mean) | tokens (mean) | payload tok (mean) | input | cache read | output | cost USD | quality | sourced | tool calls | violations |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, a := range run.Arms {
 		s := all[a.Name]
 		calls := fmt.Sprintf("%d webctl", s.Webctl)
 		if a.Mode == ModeNative {
 			calls = fmt.Sprintf("%d search", s.Searches)
 		}
-		fmt.Fprintf(w, "| %s | %d | %d | %.1f | %.0f | %d | %d | %d | %.3f | %.2f | %d/%d | %s | %d |\n",
-			a.Name, s.N, s.Failed, s.meanWall(), s.meanTokens(), s.Tokens.Input+s.Tokens.CacheWrite, s.Tokens.CacheRead, s.Tokens.Output,
+		fmt.Fprintf(w, "| %s | %d | %d | %.1f | %.0f | %.0f | %d | %d | %d | %.3f | %.2f | %d/%d | %s | %d |\n",
+			a.Name, s.N, s.Failed, s.meanWall(), s.meanTokens(), meanInt(s.Payload, s.N)/4, s.Tokens.Input+s.Tokens.CacheWrite, s.Tokens.CacheRead, s.Tokens.Output,
 			s.Cost, s.meanScore(), s.Sourced, s.Judged, calls, s.Violate)
 	}
 	fmt.Fprintln(w)
@@ -248,12 +255,17 @@ func pairArms(arms []Arm) []armPair {
 			continue
 		}
 		for _, wc := range arms {
-			if wc.Mode == ModeWebctl && wc.Harness == n.Harness && wc.Model == n.Model {
+			if wc.Mode.UsesWebctl() && wc.Harness == n.Harness && wc.Model == n.Model {
 				pairs = append(pairs, armPair{native: n, webctl: wc})
 			}
 		}
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].native.Name < pairs[j].native.Name })
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].native.Name != pairs[j].native.Name {
+			return pairs[i].native.Name < pairs[j].native.Name
+		}
+		return pairs[i].webctl.Name < pairs[j].webctl.Name
+	})
 	return pairs
 }
 

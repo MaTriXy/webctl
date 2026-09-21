@@ -20,9 +20,15 @@ type Mode string
 const (
 	// ModeWebctl: the agent may only use `webctl` from its shell.
 	ModeWebctl Mode = "webctl"
+	// ModeWebctlLite: webctl only, and never --scrape: results are title,
+	// URL, score, and snippet, the same shape as a native search result.
+	ModeWebctlLite Mode = "webctl-lite"
 	// ModeNative: the agent may only use its own built-in search and fetch.
 	ModeNative Mode = "native"
 )
+
+// UsesWebctl reports whether the mode reaches the web through webctl.
+func (m Mode) UsesWebctl() bool { return m == ModeWebctl || m == ModeWebctlLite }
 
 // Arm is one harness × model × mode combination.
 type Arm struct {
@@ -76,6 +82,10 @@ type Result struct {
 	// Violations counts tool calls the arm was told not to make (a native
 	// search in a webctl arm, a shell command in a native arm).
 	Violations int `json:"violations"`
+	// PayloadChars is the size of every search-tool result returned into
+	// the agent's context: webctl output, or the harness's own search and
+	// fetch results. 0 when the harness hides them (Codex native search).
+	PayloadChars int `json:"payload_chars"`
 	// Log is the path of the raw harness output.
 	Log string `json:"log,omitempty"`
 	// Judge is filled after grading.
@@ -106,10 +116,13 @@ func NewRunner(harness string) (Runner, error) {
 func DefaultArms() []Arm {
 	return []Arm{
 		{Name: "claude-sonnet-webctl", Harness: "claude", Model: "sonnet", Mode: ModeWebctl},
+		{Name: "claude-sonnet-webctl-lite", Harness: "claude", Model: "sonnet", Mode: ModeWebctlLite},
 		{Name: "claude-sonnet-native", Harness: "claude", Model: "sonnet", Mode: ModeNative},
 		{Name: "codex-terra-webctl", Harness: "codex", Model: "gpt-5.6-terra", Mode: ModeWebctl},
+		{Name: "codex-terra-webctl-lite", Harness: "codex", Model: "gpt-5.6-terra", Mode: ModeWebctlLite},
 		{Name: "codex-terra-native", Harness: "codex", Model: "gpt-5.6-terra", Mode: ModeNative},
 		{Name: "pi-kimi-k3-webctl", Harness: "pi", Model: "accounts/fireworks/models/kimi-k3", Mode: ModeWebctl},
+		{Name: "pi-kimi-k3-webctl-lite", Harness: "pi", Model: "accounts/fireworks/models/kimi-k3", Mode: ModeWebctlLite},
 	}
 }
 
@@ -182,7 +195,7 @@ func (claudeRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir st
 		"--max-turns", "40",
 	}
 	switch arm.Mode {
-	case ModeWebctl:
+	case ModeWebctl, ModeWebctlLite:
 		args = append(args,
 			"--allowedTools", "Bash(webctl:*)",
 			"--disallowedTools", "WebSearch,WebFetch,Agent,Read,Edit,Write,Glob,Grep",
@@ -222,12 +235,13 @@ func (claudeRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir st
 		res.Error = "claude reported is_error"
 	}
 	switch arm.Mode {
-	case ModeWebctl:
+	case ModeWebctl, ModeWebctlLite:
 		res.Violations = parsed.searches
 	case ModeNative:
 		res.Violations = parsed.bashCalls
 		res.WebctlCalls = 0
 	}
+	res.PayloadChars = parsed.payload
 	return res, nil
 }
 
@@ -239,6 +253,7 @@ type claudeParsed struct {
 	searches  int
 	bashCalls int
 	isError   bool
+	payload   int
 }
 
 // parseClaude reads the stream-json events: tool_use blocks in assistant
@@ -248,6 +263,7 @@ func parseClaude(b []byte) (claudeParsed, error) {
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	gotResult := false
+	tools := map[string]string{} // tool_use id → tool name
 	for sc.Scan() {
 		line := bytes.TrimSpace(sc.Bytes())
 		if len(line) == 0 || line[0] != '{' {
@@ -257,8 +273,11 @@ func parseClaude(b []byte) (claudeParsed, error) {
 			Type    string `json:"type"`
 			Message struct {
 				Content []struct {
-					Type string `json:"type"`
-					Name string `json:"name"`
+					Type      string          `json:"type"`
+					Name      string          `json:"name"`
+					ID        string          `json:"id"`
+					ToolUseID string          `json:"tool_use_id"`
+					Content   json.RawMessage `json:"content"`
 				} `json:"content"`
 			} `json:"message"`
 			Result   string  `json:"result"`
@@ -284,11 +303,22 @@ func parseClaude(b []byte) (claudeParsed, error) {
 				if c.Type != "tool_use" {
 					continue
 				}
+				tools[c.ID] = c.Name
 				switch c.Name {
 				case "WebSearch", "WebFetch":
 					p.searches++
 				case "Bash":
 					p.bashCalls++
+				}
+			}
+		case "user":
+			for _, c := range ev.Message.Content {
+				if c.Type != "tool_result" {
+					continue
+				}
+				switch tools[c.ToolUseID] {
+				case "WebSearch", "WebFetch", "Bash":
+					p.payload += toolResultChars(c.Content)
 				}
 			}
 		case "result":
@@ -320,7 +350,7 @@ func (codexRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir str
 		"-C", workDir,
 	}
 	switch arm.Mode {
-	case ModeWebctl:
+	case ModeWebctl, ModeWebctlLite:
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox", "-c", `web_search="disabled"`)
 	case ModeNative:
 		args = append(args, "-s", "read-only", "-c", `web_search="live"`)
@@ -340,12 +370,13 @@ func (codexRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir str
 	res.Answer, res.Tokens, res.Turns = parsed.answer, parsed.tokens, parsed.turns
 	res.SearchCalls, res.WebctlCalls = parsed.searches, parsed.webctl
 	switch arm.Mode {
-	case ModeWebctl:
+	case ModeWebctl, ModeWebctlLite:
 		res.Violations = parsed.searches
 	case ModeNative:
 		res.Violations = parsed.commands
 		res.WebctlCalls = 0
 	}
+	res.PayloadChars = parsed.payload // native search results are server-side: not visible
 	if parsed.errText != "" {
 		res.Error = parsed.errText
 	}
@@ -359,6 +390,7 @@ type codexParsed struct {
 	searches int
 	webctl   int
 	commands int
+	payload  int
 	errText  string
 }
 
@@ -378,6 +410,7 @@ func parseCodex(b []byte) (codexParsed, error) {
 				Type    string `json:"type"`
 				Text    string `json:"text"`
 				Command string `json:"command"`
+				Output  string `json:"aggregated_output"`
 			} `json:"item"`
 			Usage struct {
 				Input      int `json:"input_tokens"`
@@ -405,6 +438,7 @@ func parseCodex(b []byte) (codexParsed, error) {
 				p.searches++
 			case "command_execution":
 				p.commands++
+				p.payload += len(ev.Item.Output)
 				if strings.Contains(ev.Item.Command, "webctl") {
 					p.webctl++
 				}
@@ -450,8 +484,8 @@ func piArgs(model string) []string {
 }
 
 func (piRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir string) (Result, error) {
-	if arm.Mode != ModeWebctl {
-		return Result{Arm: arm.Name}, errors.New("pi has no built-in web search; only the webctl mode exists")
+	if !arm.Mode.UsesWebctl() {
+		return Result{Arm: arm.Name}, errors.New("pi has no built-in web search; only the webctl modes exist")
 	}
 	promptArg, err := piPromptFile(filepath.Join(logDir, arm.Name+".prompt.md"), prompt)
 	if err != nil {
@@ -483,6 +517,7 @@ func (piRunner) Run(ctx context.Context, arm Arm, prompt, workDir, logDir string
 	res.Answer, res.Tokens, res.CostUSD, res.Turns = parsed.answer, parsed.tokens, parsed.cost, parsed.turns
 	res.WebctlCalls = parsed.webctl
 	res.Violations = parsed.commands - parsed.webctl
+	res.PayloadChars = parsed.payload
 	if parsed.errText != "" {
 		res.Error = parsed.errText
 	}
@@ -496,6 +531,7 @@ type piParsed struct {
 	turns    int
 	webctl   int
 	commands int
+	payload  int
 	errText  string
 }
 
@@ -533,6 +569,9 @@ func parsePi(b []byte) (piParsed, error) {
 			Args     struct {
 				Command string `json:"command"`
 			} `json:"args"`
+			Result struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"result"`
 			Error string `json:"error"`
 		}
 		if err := json.Unmarshal(line, &ev); err != nil {
@@ -571,6 +610,10 @@ func parsePi(b []byte) (piParsed, error) {
 					p.webctl++
 				}
 			}
+		case "tool_execution_end":
+			if ev.ToolName == "bash" {
+				p.payload += toolResultChars(ev.Result.Content)
+			}
 		}
 	}
 	if !seen {
@@ -580,6 +623,29 @@ func parsePi(b []byte) (piParsed, error) {
 		return p, errors.New("no assistant text in output")
 	}
 	return p, nil
+}
+
+// toolResultChars sizes a tool result that is either a JSON string or a
+// list of {type, text} blocks.
+func toolResultChars(raw json.RawMessage) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	var str string
+	if json.Unmarshal(raw, &str) == nil {
+		return len(str)
+	}
+	var blocks []struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) == nil {
+		n := 0
+		for _, b := range blocks {
+			n += len(b.Text)
+		}
+		return n
+	}
+	return len(raw)
 }
 
 func firstLine(s string) string {

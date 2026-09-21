@@ -40,16 +40,16 @@ once told to use only that. Kimi K3, via pi, grades every answer blind.
 Runs are saved as JSON under ~/webctl/benchmarks with raw logs beside them.`,
 		SilenceUsage: true,
 	}
-	root.AddCommand(newRunCmd(), newReportCmd(), newListCmd())
+	root.AddCommand(newRunCmd(), newReportCmd(), newListCmd(), newExportCmd())
 	return root
 }
 
 func newRunCmd() *cobra.Command {
 	var (
-		casesDir, pattern, armSpec, out, resume, judgeModel, rerunArms string
-		concurrency                                                    int
-		timeout                                                        time.Duration
-		noJudge                                                        bool
+		casesDir, pattern, armSpec, out, resume, judgeModel, rerunArms, experiment string
+		concurrency                                                                int
+		timeout                                                                    time.Duration
+		noJudge                                                                    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -129,6 +129,13 @@ func newRunCmd() *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "saved %s\n\n", out)
+			if experiment != "" {
+				dir := filepath.Join(experimentsDir, benchmarks.ExperimentName(experiment))
+				if err := benchmarks.Export(run, benchmarks.ExperimentName(experiment), dir); err != nil {
+					return err
+				}
+				fmt.Fprintf(os.Stderr, "exported %s\n\n", dir)
+			}
 			benchmarks.WriteReport(os.Stdout, run)
 			return nil
 		},
@@ -139,6 +146,7 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&armSpec, "arms", "all", "comma-separated arm names, or all: "+armNames())
 	f.StringVar(&out, "out", "", "run file to write (default ~/webctl/benchmarks/<time>.json)")
 	f.StringVar(&resume, "resume", "", "run file (or 'latest') whose finished cells are kept; only missing cells run")
+	f.StringVar(&experiment, "experiment", "", "also export the run to benchmarks/experiments/<name>/results")
 	f.StringVar(&rerunArms, "rerun-arms", "", "with --resume, comma-separated arms whose cells are discarded and run again; every case touched is judged again")
 	f.StringVar(&judgeModel, "judge-model", benchmarks.DefaultJudgeModel, "pi model pattern for the judge")
 	f.IntVar(&concurrency, "concurrency", 3, "agent runs in flight at once (each harness gets half)")
@@ -147,10 +155,12 @@ func newRunCmd() *cobra.Command {
 	return cmd
 }
 
+const experimentsDir = "benchmarks/experiments"
+
 func newReportCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "report [run.json|latest]",
-		Short: "Print the Markdown report for a saved run",
+		Use:   "report [run.json|latest|experiment-name]",
+		Short: "Print the Markdown report for a saved run or an exported experiment",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := "latest"
@@ -164,7 +174,7 @@ func newReportCmd() *cobra.Command {
 					return err
 				}
 			}
-			run, err := benchmarks.LoadRun(path)
+			run, err := loadRunOrExperiment(path)
 			if err != nil {
 				return err
 			}
@@ -172,6 +182,53 @@ func newReportCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// loadRunOrExperiment accepts a run file, an experiment directory, or an
+// experiment name under benchmarks/experiments.
+func loadRunOrExperiment(path string) (*benchmarks.Run, error) {
+	if strings.HasSuffix(path, ".json") {
+		return benchmarks.LoadRun(path)
+	}
+	if st, err := os.Stat(path); err == nil && st.IsDir() {
+		return benchmarks.LoadExperiment(path)
+	}
+	return benchmarks.LoadExperiment(filepath.Join(experimentsDir, path))
+}
+
+func newExportCmd() *cobra.Command {
+	var name string
+	cmd := &cobra.Command{
+		Use:   "export <run.json|latest> --experiment <name>",
+		Short: "Write a run to benchmarks/experiments/<name>/results as JSONL, metadata, and report",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if name == "" {
+				return fmt.Errorf("--experiment is required")
+			}
+			path := args[0]
+			if path == "latest" {
+				var err error
+				path, err = benchmarks.Latest(defaultRunsDir())
+				if err != nil {
+					return err
+				}
+			}
+			run, err := benchmarks.LoadRun(path)
+			if err != nil {
+				return err
+			}
+			name = benchmarks.ExperimentName(name)
+			dir := filepath.Join(experimentsDir, name)
+			if err := benchmarks.Export(run, name, dir); err != nil {
+				return err
+			}
+			fmt.Println(dir)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "experiment", "", "experiment name (directory under benchmarks/experiments)")
+	return cmd
 }
 
 func newListCmd() *cobra.Command {

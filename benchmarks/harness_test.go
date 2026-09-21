@@ -8,9 +8,10 @@ import (
 func TestParseClaudeStream(t *testing.T) {
 	stream := strings.Join([]string{
 		`{"type":"system","subtype":"init"}`,
-		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"webctl search q"}}]}}`,
-		`{"type":"user","message":{"content":[{"type":"tool_result"}]}}`,
-		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"WebSearch","input":{}}]}}`,
+		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"webctl search q"}}]}}`,
+		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"brave: 3 results"}]}}`,
+		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"WebSearch","input":{}}]}}`,
+		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":[{"type":"text","text":"Links: [x]"}]}]}}`,
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}`,
 		`{"type":"result","subtype":"success","result":"The answer.","is_error":false,"num_turns":3,"total_cost_usd":0.25,"usage":{"input_tokens":10,"cache_read_input_tokens":500,"cache_creation_input_tokens":300,"output_tokens":40,"output_tokens_details":{"thinking_tokens":5}}}`,
 	}, "\n")
@@ -20,6 +21,9 @@ func TestParseClaudeStream(t *testing.T) {
 	}
 	if p.answer != "The answer." || p.turns != 3 || p.cost != 0.25 || p.bashCalls != 1 || p.searches != 1 {
 		t.Errorf("parsed = %+v", p)
+	}
+	if p.payload != len("brave: 3 results")+len("Links: [x]") {
+		t.Errorf("payload = %d", p.payload)
 	}
 	if p.tokens.TotalInput() != 810 || p.tokens.Output != 40 || p.tokens.Reasoning != 5 {
 		t.Errorf("tokens = %+v", p.tokens)
@@ -35,7 +39,7 @@ func TestParseCodexJSONL(t *testing.T) {
 		`{"type":"thread.started","thread_id":"x"}`,
 		`{"type":"item.completed","item":{"id":"1","type":"agent_message","text":"working"}}`,
 		`{"type":"item.completed","item":{"id":"2","type":"web_search","query":"q"}}`,
-		`{"type":"item.completed","item":{"id":"3","type":"command_execution","command":"/bin/zsh -lc 'webctl search q'"}}`,
+		`{"type":"item.completed","item":{"id":"3","type":"command_execution","command":"/bin/zsh -lc 'webctl search q'","aggregated_output":"twelve chars"}}`,
 		`{"type":"item.completed","item":{"id":"4","type":"command_execution","command":"ls"}}`,
 		`{"type":"item.completed","item":{"id":"5","type":"agent_message","text":"Final answer"}}`,
 		`{"type":"turn.completed","usage":{"input_tokens":12947,"cached_input_tokens":9984,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":2}}`,
@@ -44,7 +48,7 @@ func TestParseCodexJSONL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.answer != "Final answer" || p.turns != 2 || p.searches != 1 || p.webctl != 1 || p.commands != 2 {
+	if p.answer != "Final answer" || p.turns != 2 || p.searches != 1 || p.webctl != 1 || p.commands != 2 || p.payload != 12 {
 		t.Errorf("parsed = %+v", p)
 	}
 	// input_tokens includes cached tokens; they must not be double counted.
@@ -62,6 +66,7 @@ func TestParsePiJSON(t *testing.T) {
 		`{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"q"}]}}`,
 		`{"type":"tool_execution_start","toolName":"bash","args":{"command":"webctl search q --goal g"}}`,
 		`{"type":"tool_execution_start","toolName":"bash","args":{"command":"curl x"}}`,
+		`{"type":"tool_execution_end","toolName":"bash","result":{"content":[{"type":"text","text":"webctl output here"}]}}`,
 		`{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"t"},{"type":"text","text":"partial"}],"usage":{"input":700,"output":100,"cacheRead":600,"cacheWrite":0,"cost":{"total":0.004}}}}`,
 		`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Final"}],"usage":{"input":32,"output":57,"cacheRead":21,"cacheWrite":0,"cost":{"total":0.001}}}}`,
 	}, "\n")
@@ -69,7 +74,7 @@ func TestParsePiJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.answer != "Final" || p.turns != 2 || p.webctl != 1 || p.commands != 2 {
+	if p.answer != "Final" || p.turns != 2 || p.webctl != 1 || p.commands != 2 || p.payload != len("webctl output here") {
 		t.Errorf("parsed = %+v", p)
 	}
 	if p.tokens.Input != 732 || p.tokens.Output != 157 || p.tokens.CacheRead != 621 || p.cost < 0.0049 || p.cost > 0.0051 {
@@ -101,6 +106,10 @@ func TestBuildPromptModes(t *testing.T) {
 	if !strings.Contains(w, "webctl search") || !strings.Contains(w, "--goal") || strings.Contains(w, "built-in web search and web fetch tools, and nothing else") {
 		t.Errorf("webctl prompt:\n%s", w)
 	}
+	l := BuildPrompt(c, ModeWebctlLite)
+	if !strings.Contains(l, "webctl search") || !strings.Contains(l, "Do not pass --scrape") || strings.Contains(l, "--filter-chunks   #") {
+		t.Errorf("lite prompt:\n%s", l)
+	}
 	if strings.Contains(n, "webctl") || !strings.Contains(n, "Do not run shell commands") {
 		t.Errorf("native prompt:\n%s", n)
 	}
@@ -111,7 +120,7 @@ func TestBuildPromptModes(t *testing.T) {
 
 func TestPairArmsAndParseArms(t *testing.T) {
 	pairs := pairArms(DefaultArms())
-	if len(pairs) != 2 {
+	if len(pairs) != 4 { // claude and codex, each paired with webctl and webctl-lite
 		t.Fatalf("pairs = %+v", pairs)
 	}
 	for _, p := range pairs {

@@ -25,6 +25,15 @@ Usage:
 Always pass --goal. Prefer --scrape --filter-chunks over trying to read pages yourself: it returns only the chunks that matter. Run at most 4 webctl commands.
 
 `)
+	case ModeWebctlLite:
+		b.WriteString(`Tools: you have the command-line tool webctl on PATH, and it is the ONLY way you may reach the web. Do not use any built-in web search or fetch tool, and do not run curl, wget, or any command other than webctl.
+
+Usage:
+  webctl search "<search-engine style query>" --goal "<what you actually need, in plain words>"
+
+Always pass --goal. Do not pass --scrape or --filter-chunks: work from the titles, URLs, and snippets webctl returns. Run at most 4 webctl commands.
+
+`)
 	case ModeNative:
 		b.WriteString(`Tools: use your built-in web search and web fetch tools, and nothing else. Do not run shell commands. Run at most 4 searches/fetches.
 
