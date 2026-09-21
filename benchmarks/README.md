@@ -48,7 +48,7 @@ Runs are JSON under `~/webctl/benchmarks/`, one file per run, with raw harness a
 
 Requirements: `claude`, `codex`, `pi`, and `webctl` on PATH, logged in; a Fireworks key in pi's `models.json` for Kimi K3.
 
-## Findings (2026-09-20, experiments 01–03)
+## Findings (2026-09-20/21, experiments 01–04)
 
 Search payload per case, chars of search results returned into the agent's context ÷ 4, with judged quality. Same 30 cases, one run per cell.
 
@@ -57,11 +57,13 @@ Search payload per case, chars of search results returned into the agent's conte
 | Claude native (WebSearch + WebFetch) | 1.0k | 8.53 | $0.138 |
 | Claude webctl, no scrape | 1.5k | 9.40 | $0.097 |
 | Claude webctl, `--scrape --filter-chunks` (top 3) | 4.6k | 9.47 | $0.112 |
+| Claude webctl, scrape + `--summarize` (DeepSeek Flash) | 2.1k | 9.30 | $0.100 |
 | Codex native | hidden (server-side) | 9.37 | |
 | Codex webctl, no scrape | 2.0k | 9.20 | |
 | Codex webctl, scrape | 6.8k | 9.37 | |
 
 - webctl without scraping is the like-for-like comparison: 50% more payload than Claude's native links, one point better quality, lowest cost. Claude's native payload is links plus a hidden summary; the reading happens in sub-calls that are billed but not shown.
+- Summarizing scraped pages with a small model (experiment 04) halves scrape's payload at no quality cost; it is the scrape mode to use.
 - Scraping triples the payload for 0.1 points on average. It pays on earnings calls (Claude 9.0 → 10.0), community threads (9.0 → 9.6), and long documents; it does nothing on dev docs, news, or short facts.
 - Before `--max-output` and `--scrape-top` (experiment 01), scrape output was a median 52 KB per call and Claude Code cut 26 of 41 of them to a 2 KB preview. Bounding it (experiment 02) took Claude from 8.83 to 9.33 and cut total tokens 28%.
 - Total tokens per case are dominated by the harness's own per-turn baseline (about 20k on Claude, 16k on Codex); compare payload, not totals, when comparing search tools.

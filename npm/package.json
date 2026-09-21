@@ -1,6 +1,6 @@
 {
   "name": "webctl",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Smart web search CLI for agents, backed by Jev. Saves a lot of tokens.",
   "license": "MIT",
   "repository": {
