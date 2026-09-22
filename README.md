@@ -78,8 +78,8 @@ Filter chunks of scraped webpages to save even more tokens (`--scrape --filter-c
               │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │ │
               ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼ ▼
       ┌───────────────────────────────────────────────────────┐
-      │                          Jev                          │  one batch request per page
-      │         "is this chunk relevant to the query?"        │
+      │                          Jev                          │  batch request per page
+      │         "is this chunk relevant to the query?"        │  (or a few batches for long pages)
       └───────┬───────┬───────┬───────┬───────────────────────┘
               │       │       │       │   ✂️  irrelevant chunks dropped
               ▼       ▼       ▼       ▼
