@@ -124,7 +124,7 @@ Respect rate limits with automatic cooldowns:
                                     │
                                     ▼
       ┌───────────────────────────────────────────────────────┐
-      │  ~/webctl/cooldown.json                     │  shared by every process
+      │  ~/webctl/cooldown.json                               │  shared by every process
       │  exa: strike 1, skip until +15m                       │
       └───────────────────────────────────────────────────────┘
                                     │
