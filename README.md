@@ -293,6 +293,8 @@ webctl keys set brave        # a key puts the provider in the chain
 webctl search "query" -p tavily     # exactly one provider
 ```
 
+Want another provider? See [CONTRIBUTING.md](CONTRIBUTING.md): provider additions come from people who use them, not from the vendors.
+
 ## License
 
 MIT
