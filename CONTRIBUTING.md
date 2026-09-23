@@ -37,7 +37,11 @@ Disclosed conflicts are easy to handle; discovered ones are not.
 
 - `go vet ./... && go test ./...` must pass; CI runs exactly that.
 - `gofmt` your changes.
-- Keep providers to the existing shape: a `Search`, a `Validate`, and a
-  test that hits a stub server. See `internal/provider/tavily.go`.
+- A new provider is a copy of `internal/provider/tavily.go` with the base
+  URL, the request body, and the response field names changed. Do not add
+  helpers, a new HTTP client, or a different structure; the shared
+  `postJSON`, `clampNum`, `excerpt`, and `collapseWhitespace` do the rest.
+  Add a stub-server test next to the others that checks the path, the auth
+  header, the body, and that empty results are dropped.
 - Docs live in `docs/`; update `docs/providers.md` and `docs/config.md`
   when a provider or key changes.
