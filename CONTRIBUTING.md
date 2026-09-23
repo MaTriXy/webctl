@@ -26,8 +26,8 @@ like to use, which is what the docs are for.
 
 If you would like webctl users to be able to use your API today, you can
 ship the adapter yourself. `internal/provider` is small and the pattern is
-easy to copy; a fork or a wrapper in your own repo is a fine home for it,
-and we are happy to link to it from an issue.
+easy to copy; a fork or a wrapper in your own repo is a fine home for it.
+We do not review, link, or endorse vendor-maintained adapters.
 
 **Always disclose affiliations.** Whatever you are contributing, say in
 the PR if you have a commercial relationship with anything it touches.
